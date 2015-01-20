@@ -139,4 +139,9 @@ QUESTION: does the client include its interfaces'IPs in the request sent?
 
 
 
+## Further ideas
 
+make the same tests 
+- with other http method (POST, HEAD, ...)
+- with https, http/2
+- with other Accept http header values 

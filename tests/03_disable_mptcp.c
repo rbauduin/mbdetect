@@ -43,7 +43,7 @@ int toggle_mptcp() {
 	fclose(f);
 	// as current is an unsigned char casted to an int, 
 	// use %c to print it as a char
-	printf("current value is %c\n",current);
+	printf("before-change value is %c\n",current);
 	if (current==48) { // 48 = ASCII code of 0
 		enable_mptcp();
 	}
