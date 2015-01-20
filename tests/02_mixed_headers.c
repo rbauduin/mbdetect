@@ -9,10 +9,16 @@ int main(void)
   curl = curl_easy_init();
   if(curl) {
     curl_easy_setopt(curl, CURLOPT_URL, "http://localhost:8080");
-    /* example.com is redirected, so we tell libcurl to follow redirection */ 
+    /* we tell libcurl to follow redirection */ 
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     /* also print headers */
     curl_easy_setopt(curl, CURLOPT_HEADER, 1L );
+
+    // Set headers
+    struct curl_slist *headers=NULL; 
+    headers = curl_slist_append(headers, "AcCePt: text/xml"); 
+    headers = curl_slist_append(headers, "X-MiXeD-CaSe: 1");
+    res = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers); 
  
     /* Perform the request, res will get the return code */ 
     res = curl_easy_perform(curl);
@@ -22,6 +28,7 @@ int main(void)
               curl_easy_strerror(res));
  
     /* always cleanup */ 
+    curl_slist_free_all(headers); 
     curl_easy_cleanup(curl);
   }
   return 0;
