@@ -21,7 +21,6 @@ int main(void)
     struct curl_slist *headers=NULL; 
     headers = curl_slist_append(headers, "AcCePt: text/html"); 
     headers = curl_slist_append(headers, "X-MiXeD-CaSe: 1");
-    headers = curl_slist_append(headers, "Host: www.google.com");
     res = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers); 
  
     // set POST data
