@@ -1,15 +1,34 @@
 #include "mongoose.h"
 #include "string.h"
+#include <time.h>
+#include <stdlib.h>
 
 // See http://cesanta.com/docs/Embed.shtml
 
 
-
 int event_handler(struct mg_connection *conn, enum mg_event ev) {
-  int i;
+  int i,random;
+  char new_uri[15];
   switch (ev) {
     case MG_AUTH: return MG_TRUE;
     case MG_REQUEST: 
+	// needs to be in the switch statement, or segfaults
+        // do not process requests for /cumulus.jpg, let the standard handler do it
+        // hence serving file from filesystem
+        if (!strcmp(conn->uri, "/cumulus.jpg")) {
+        	return MG_FALSE;
+        }
+
+	// requests to /random.jpg return a random image
+        if (!strcmp(conn->uri, "/random.jpg")) {
+		random=rand()%10;
+		sprintf(new_uri,"/cumulus_%d.jpg", random);
+		printf("%s\n",new_uri);
+		conn->uri=new_uri;
+		printf("will return %s\n", conn->uri);
+        	return MG_FALSE;
+        }
+
 	mg_send_header(conn, "X-TeSt","WiTnEsS");
     	mg_printf_data(conn, "%s\n", "Welcome hehe!");
 	mg_printf_data(conn, "%s\n", mg_get_header(conn, "Host"));
@@ -31,6 +50,9 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
 
 int main(void) {
   struct mg_server *server = mg_create_server(NULL, event_handler);
+  // seed prng
+  srand(time(NULL));
+
   mg_set_option(server, "document_root", ".");      // Serve current directory
   mg_set_option(server, "listening_port", "8080");  // Open port 8080
 
