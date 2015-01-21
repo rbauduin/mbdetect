@@ -80,18 +80,21 @@ QUESTIONS: do we look only at request headers or do we also check response heade
 ### cached images
 
 - Goal: detect caching middleboxes
-- Desc: send an http request for an image, then send the exact same request. Our server should server different images for the first and second request. 
+- Desc: send an http request for an image, then send the exact same request. Our server should serve different images for the first and second request. 
 - Expected:
   - with problematic middlebox: same image received for both requests
   - without: different images for both requests
+- Details: when the path /random.jpg is requested, the server sends a random image out of a set of 10 images, all images having different sizes. So the client could check if different sizes of images are received. QUESTION: is there an implication on this test if a transcoding proxy is modifying the images?
 
 ### transcoding of images
 
 - Goal: detect caching and optimising images
-- Desc: send a request for a big image, then resend the same request
+- Desc: send a request for an image of known size, and compare the size received.
 - Expected:
-  - with problematic middlebox: second image is smaller
-  - without: same images for both requests
+  - with problematic middlebox: image is smaller
+  - without: expected size
+- Details: QUESTION: Could the server send to the client a list of image urls with their respective sizes, and the client then uses this info to perform the test? Thjis could be done for all tests, eg listing which headers are set in the response.
+
 
 ### mime types
 
@@ -145,3 +148,6 @@ make the same tests
 - with other http method (POST, HEAD, ...)
 - with https, http/2
 - with other Accept http header values 
+
+- add distinct tests for ipv6 clients?
+- test http keep-alive?
