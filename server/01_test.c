@@ -8,6 +8,7 @@
 
 int event_handler(struct mg_connection *conn, enum mg_event ev) {
   int i,random;
+  // QUESTION/ how to do it with pointer?
   char new_uri[15];
   switch (ev) {
     case MG_AUTH: return MG_TRUE;
@@ -38,6 +39,8 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
             printf("%s : %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
 	}
 	printf("---End of headers---\n");
+        mg_printf_data(conn, "client ip : %s\n", conn->remote_ip);
+        mg_printf_data(conn, "client port : %d\n", conn->remote_port);
         printf("POST length: %zd\n", conn->content_len);
         mg_printf_data(conn, "POST length: %zd\n", conn->content_len);
 	printf("POST data : %s\n" , strndup(conn->content, conn->content_len));
