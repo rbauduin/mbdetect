@@ -8,7 +8,7 @@
 
 int event_handler(struct mg_connection *conn, enum mg_event ev) {
   int i,random;
-  // QUESTION/ how to do it with pointer?
+  // QUESTION what about doing it with pointer?
   char new_uri[15];
   switch (ev) {
     case MG_AUTH: return MG_TRUE;
@@ -19,6 +19,10 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
         if (!strcmp(conn->uri, "/cumulus.jpg")) {
         	return MG_FALSE;
         }
+	// If path starts with /files, serve file on disk
+        if (!strncmp(conn->uri, "/files", 6)) {
+        	return MG_FALSE;
+	}
 
 	// requests to /random.jpg return a random image
         if (!strcmp(conn->uri, "/random.jpg")) {
