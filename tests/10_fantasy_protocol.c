@@ -9,7 +9,7 @@
 
 char *build_get_query(char* path, char* protocol,char* host){
 	// template used to build the query 
-	char *tpl= "GET %s %s\nHost: %s\n\n";
+	char *tpl= "GET %s %s\r\nHost: %s\r\n\r\n";
 	// length of the query string
 	int query_len;
 	// the query string itself
