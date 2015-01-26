@@ -140,6 +140,13 @@ QUESTION: does the client include its interfaces'IPs in the request sent?
   - with problematic middlebox:
   - without:
 
+### HTTP keep-alive
+
+- Goal: check that the "Connection: Close" header goes through unchanged
+- Desc: First send 2 queries with keep-alive, and check that same ports are used for both queries, then repleat with "Connect: Close" header and check ports differ between two queries.
+- Expected:
+  - with problematic middlebox: Same ports used for two last queries
+  - without: different ports used as tcp connection should be closed
 
 
 ## Further ideas

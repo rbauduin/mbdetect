@@ -1,5 +1,22 @@
 #include <stdio.h>
 #include <curl/curl.h>
+
+
+int double_query(CURL* curl) {
+	CURLcode res;
+	/* Perform the request, res will get the return code */ 
+	res = curl_easy_perform(curl);
+	/* Check for errors */ 
+	if(res != CURLE_OK)
+	  fprintf(stderr, "curl_easy_perform() failed: %s\n",
+	          curl_easy_strerror(res));
+	
+	/* Repeat query and see ports */
+	res = curl_easy_perform(curl);
+	if(res != CURLE_OK)
+	  fprintf(stderr, "curl_easy_perform() failed: %s\n",
+	          curl_easy_strerror(res));
+}
  
 int main(void)
 {
@@ -25,14 +42,21 @@ int main(void)
 
 
  
-    /* Perform the request, res will get the return code */ 
-    res = curl_easy_perform(curl);
-    /* Check for errors */ 
-    if(res != CURLE_OK)
-      fprintf(stderr, "curl_easy_perform() failed: %s\n",
-              curl_easy_strerror(res));
+    double_query(curl);
+
+
+    printf("-------------------------\n");
+
+    /* Now send 2 queries with Connection: Close header */
+    curl_slist_free_all(headers);
+    headers=NULL;
+    headers = curl_slist_append(headers, "Connection: Close"); 
+    res = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers); 
+
+    double_query(curl);
  
     /* always cleanup */ 
+    curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
   }
   return 0;
