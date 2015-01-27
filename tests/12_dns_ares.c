@@ -72,6 +72,8 @@ main(void)
 	}
 	//options.sock_state_cb_data;
 	options.sock_state_cb = state_cb;
+	// in optmask we say we want to use flags, and
+	// options.flags is the value of the flags
 	options.flags = ARES_FLAG_USEVC;
 	optmask |= ARES_OPT_SOCK_STATE_CB;
 	optmask |= ARES_OPT_FLAGS;

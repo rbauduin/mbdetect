@@ -109,7 +109,7 @@ int main(void){
 
 
 	puts("Connected");
-	query = build_get_query("/","SICS/1.0","localhost");
+	query = build_get_query("/","HTTP/1.0","localhost");
 	printf("\nreceived query: \n%s\n", query);
 	res = send_query(sockfd, query, response);
 	if ( res == strlen(query) ) {
