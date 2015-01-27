@@ -148,6 +148,10 @@ QUESTION: does the client include its interfaces'IPs in the request sent?
   - with problematic middlebox: Same ports used for two last queries
   - without: different ports used as tcp connection should be closed
 
+### SMTP sending
+
+Note: smtp is interesting but might be difficult to test as ISPq often only allow connections to their smtp servers to limit spam. Still, there the code using curl to send mails if it can help.
+
 
 ## Further ideas
 
@@ -157,4 +161,4 @@ make the same tests
 - with other Accept http header values 
 
 - add distinct tests for ipv6 clients?
-- test http keep-alive?
+- define tests characteristics in a file on the server that is downloaded by the client before each run? This file needs to be versioned, and the client has to include in its report which version was run.
