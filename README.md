@@ -162,3 +162,5 @@ make the same tests
 
 - add distinct tests for ipv6 clients?
 - define tests characteristics in a file on the server that is downloaded by the client before each run? This file needs to be versioned, and the client has to include in its report which version was run.
+
+- trying to configure curl tests in a config file. apt-get install libconfig9 libconfig-dev

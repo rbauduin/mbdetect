@@ -1,10 +1,26 @@
 #include <stdio.h>
 #include <curl/curl.h>
+
+
+typedef struct {
+	char *name;
+	int code;
+	char *type;
+} mapping;
+mapping arr[100000];
+//=  {
+//	{"CURLOPT_URL", CURLOPT_URL, "str"},
+//	{"CURLOPT_HEADER", CURLOPT_HEADER, "long"}
+//} 
  
+#define add_mapping(tab,code,type) tab[(code)] = (mapping) {#code, code, type} 
 int main(void)
 {
   CURL *curl;
   CURLcode res;
+add_mapping(arr,CURLOPT_URL,"str");
+add_mapping(arr,CURLOPT_FOLLOWLOCATION,"long");
+add_mapping(arr,CURLOPT_HEADER,"long");
  
   curl = curl_easy_init();
   if(curl) {
