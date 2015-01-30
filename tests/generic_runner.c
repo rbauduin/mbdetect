@@ -189,6 +189,11 @@ int main(void)
     }
     for (i=0; i<count; i++){
 	    config_setting_t *test = config_setting_get_elem(tests, i);
+	    config_setting_t *name_setting = config_setting_get_member(test, "name");
+	    if (name_setting!=NULL){
+		    const char *name = config_setting_get_string(name_setting);
+		    printf("%s running...\n", name);
+	    }
 	    config_setting_t *queries = config_setting_get_member(test, "queries");
 	    queries_count = config_setting_length(queries);
 	    for(k=0;k<queries_count;k++){
@@ -210,7 +215,6 @@ int main(void)
 		    }
 		    /* Perform the request, res will get the return code */ 
 		    for(l=0; l<repeat_query; l++) {
-			    printf("performing repeat %d", l);
 			    res = curl_easy_perform(curl);
 			    /* Check for errors */ 
 			    double content_len;
