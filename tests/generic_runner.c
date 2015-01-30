@@ -65,6 +65,49 @@ int read_config(char* path, config_t * cfg) {
   return 0;
 }
 
+void set_options(CURL* curl, config_setting_t *test){
+	int j;
+	config_setting_t *options = config_setting_get_member(test, "options");
+	int options_count = config_setting_length(options);
+	for (j=0; j<options_count; j++){
+		config_setting_t *option=config_setting_get_elem(options,j);
+		config_setting_t *name = config_setting_get_member(option, "name");
+		config_setting_t *value = config_setting_get_member(option, "value");
+		const char *name_str = config_setting_get_string(name);
+		mapping m;
+		int r = find_mapping(name_str,&m);
+		if (r) {
+			printf("ERROR, no mapping found!\n");
+			exit(1);
+		}
+		if (!strncmp(m.type,"str",3)) {
+			const char *value_str = config_setting_get_string(value);
+			printf("%s = %s\n", name_str, value_str);
+			curl_easy_setopt(curl, find_code(name_str), value_str); 
+		}
+		else if (!strncmp(m.type,"long",4)){
+			long value_long = config_setting_get_int64(value);
+			printf("%s = %lu\n", name_str, value_long);
+			curl_easy_setopt(curl, find_code(name_str), value_long); 
+		}
+		else {
+			printf("NO MATCH\n____________________________________\n");
+		}
+	}
+}
+
+void set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers){
+	int j,res;
+	config_setting_t *cfg_headers = config_setting_get_member(test, "headers");
+	if (cfg_headers==NULL)
+		return ;
+	int headers_count = config_setting_length(cfg_headers);
+	for (j=0; j<headers_count; j++){
+		const char* header=config_setting_get_string_elem(cfg_headers,j);
+		headers = curl_slist_append(headers, header); 
+	}
+    	res = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers); 
+}
 
 #define add_mapping(tab,code,type) tab[(code)] = (mapping) {#code, code, type} 
 int main(void)
@@ -74,7 +117,6 @@ int main(void)
   config_t cfg;
   int ret,i,j,count;
  
-  curl = curl_easy_init();
   ret = read_config("curl_tests.cfg", &cfg);
   if(curl && ret==0) {
     config_setting_t *tests = config_lookup(&cfg, "tests");
@@ -85,60 +127,23 @@ int main(void)
       printf("found %d tests\n", count);
     }
     for (i=0; i<count; i++){
+	    curl = curl_easy_init();
 	    config_setting_t *test = config_setting_get_elem(tests, i);
-	    config_setting_t *options = config_setting_get_member(test, "options");
-            int options_count = config_setting_length(options);
-    	    for (j=0; j<options_count; j++){
-		    config_setting_t *option=config_setting_get_elem(options,j);
-		    config_setting_t *name = config_setting_get_member(option, "name");
-		    config_setting_t *value = config_setting_get_member(option, "value");
-		    const char *name_str = config_setting_get_string(name);
-		    mapping m;
-		    int r = find_mapping(name_str,&m);
-		    if (r) {
-			    printf("ERROR, no mapping found!\n");
-			    exit(1);
-		    }
-		    else {
-			    printf("Found mapping %d\n", r);
-		    }
-		    printf("Will set option %s (option name %s) of type %s\n", name_str, m.name,m.type);
-		    if (!strncmp(m.type,"str",3)) {
-			    printf("MATCH str m.type=%s\n************************************\n", m.type);
-		               const char *value_str = config_setting_get_string(value);
-	                       printf("%s = %s\n", name_str, value_str);
-                               curl_easy_setopt(curl, find_code(name_str), value_str); 
-		    }
-		    else if (!strncmp(m.type,"long",4)){
-			    printf("MATCH long m.type=%s\n************************************\n", m.type);
-		               long value_long = config_setting_get_int64(value);
-	                       printf("%s = %lu\n", name_str, value_long);
-                               curl_easy_setopt(curl, find_code(name_str), value_long); 
-		    }
-		    else {
-			    printf("NO MATCH\n____________________________________\n");
-		    }
-	    }
-    }
+	    set_options(curl, test);
+	    struct curl_slist * curl_headers=NULL;
+	    set_headers(curl, test, curl_headers);
 
-//    //curl_easy_setopt(curl, CURLOPT_URL, "http://localhost:8080");
-//    curl_easy_setopt(curl, find_code("CURLOPT_URL"), "http://localhost:8080");
-//    /* example.com is redirected, so we tell libcurl to follow redirection */ 
-//    //curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-//    curl_easy_setopt(curl,find_code("CURLOPT_FOLLOWLOCATION"), 1L);
-//    /* also print headers */
-//    //curl_easy_setopt(curl, CURLOPT_HEADER, 1L );
-//    curl_easy_setopt(curl, find_code("CURLOPT_HEADER"), 1L );
+	    /* Perform the request, res will get the return code */ 
+	    res = curl_easy_perform(curl);
+	    /* Check for errors */ 
+	    if(res != CURLE_OK)
+		    fprintf(stderr, "curl_easy_perform() failed: %s\n",
+				    curl_easy_strerror(res));
+	    /* always cleanup */ 
+	    curl_slist_free_all(curl_headers);
+	    curl_easy_cleanup(curl);
+    }
  
-    /* Perform the request, res will get the return code */ 
-    res = curl_easy_perform(curl);
-    /* Check for errors */ 
-    if(res != CURLE_OK)
-      fprintf(stderr, "curl_easy_perform() failed: %s\n",
-              curl_easy_strerror(res));
- 
-    /* always cleanup */ 
-    curl_easy_cleanup(curl);
   }
   else {
 	  printf("no curl or no config\n");
