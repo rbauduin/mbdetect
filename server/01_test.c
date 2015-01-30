@@ -30,7 +30,7 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
 		sprintf(new_uri,"/cumulus_%d.jpg", random);
 		printf("%s\n",new_uri);
 		conn->uri=new_uri;
-		printf("will return %s\n", conn->uri);
+		printf("will return %s for client on port %d\n", conn->uri, conn->remote_port);
         	return MG_FALSE;
         }
 

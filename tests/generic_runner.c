@@ -176,7 +176,7 @@ int main(void)
   CURL *curl;
   CURLcode res;
   config_t cfg;
-  int ret,i,j,k,count,queries_count;
+  int ret,i,j,k,l,repeat_query,count,queries_count;
  
   ret = read_config("one_test.cfg", &cfg);
   if(curl && ret==0) {
@@ -201,16 +201,26 @@ int main(void)
 		    struct curl_slist * curl_headers=NULL;
 		    set_headers(curl, query, curl_headers);
 
-		    /* Perform the request, res will get the return code */ 
-		    res = curl_easy_perform(curl);
-		    /* Check for errors */ 
-		    double content_len;
-		    if(res != CURLE_OK)
-			    fprintf(stderr, "curl_easy_perform() failed: %s\n",
-					    curl_easy_strerror(res));
+		    config_setting_t *repeat_setting = config_setting_get_member(query, "repeat");
+		    if (repeat_setting!=NULL) {
+			    repeat_query = config_setting_get_int(repeat_setting);
+		    }
 		    else {
-			    curl_easy_getinfo(curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &content_len);
-			    printf("Content length was : %f\n", content_len);
+			    repeat_query = 1;
+		    }
+		    /* Perform the request, res will get the return code */ 
+		    for(l=0; l<repeat_query; l++) {
+			    printf("performing repeat %d", l);
+			    res = curl_easy_perform(curl);
+			    /* Check for errors */ 
+			    double content_len;
+			    if(res != CURLE_OK)
+				    fprintf(stderr, "curl_easy_perform() failed: %s\n",
+						    curl_easy_strerror(res));
+			    else {
+				    curl_easy_getinfo(curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &content_len);
+				    printf("Content length was : %f\n", content_len);
+			    }
 		    }
 		    /* always cleanup */ 
 		    clean_output(query, &dest);
