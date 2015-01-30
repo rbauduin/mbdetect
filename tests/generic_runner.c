@@ -176,7 +176,7 @@ int main(void)
   CURL *curl;
   CURLcode res;
   config_t cfg;
-  int ret,i,j,count;
+  int ret,i,j,k,count,queries_count;
  
   ret = read_config("one_test.cfg", &cfg);
   if(curl && ret==0) {
@@ -188,29 +188,35 @@ int main(void)
       printf("found %d tests\n", count);
     }
     for (i=0; i<count; i++){
-	    file_write dest;
-	    curl = curl_easy_init();
 	    config_setting_t *test = config_setting_get_elem(tests, i);
-	    set_options(curl, test);
-            set_output(curl, test, &dest);
-	    struct curl_slist * curl_headers=NULL;
-	    set_headers(curl, test, curl_headers);
+	    config_setting_t *queries = config_setting_get_member(test, "queries");
+	    queries_count = config_setting_length(queries);
+	    for(k=0;k<queries_count;k++){
+		    file_write dest;
+		    curl = curl_easy_init();
+		    config_setting_t *query = config_setting_get_elem(queries, k);
 
-	    /* Perform the request, res will get the return code */ 
-	    res = curl_easy_perform(curl);
-	    /* Check for errors */ 
-	    double content_len;
-	    if(res != CURLE_OK)
-		    fprintf(stderr, "curl_easy_perform() failed: %s\n",
-				    curl_easy_strerror(res));
-	    else {
-		    curl_easy_getinfo(curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &content_len);
-		    printf("Content length was : %f\n", content_len);
+		    set_options(curl, query);
+		    set_output(curl, query, &dest);
+		    struct curl_slist * curl_headers=NULL;
+		    set_headers(curl, query, curl_headers);
+
+		    /* Perform the request, res will get the return code */ 
+		    res = curl_easy_perform(curl);
+		    /* Check for errors */ 
+		    double content_len;
+		    if(res != CURLE_OK)
+			    fprintf(stderr, "curl_easy_perform() failed: %s\n",
+					    curl_easy_strerror(res));
+		    else {
+			    curl_easy_getinfo(curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &content_len);
+			    printf("Content length was : %f\n", content_len);
+		    }
+		    /* always cleanup */ 
+		    clean_output(query, &dest);
+		    curl_slist_free_all(curl_headers);
+		    curl_easy_cleanup(curl);
 	    }
-	    /* always cleanup */ 
-	    clean_output(test, &dest);
-	    curl_slist_free_all(curl_headers);
-	    curl_easy_cleanup(curl);
     }
  
   }
