@@ -182,6 +182,7 @@ QUESTION: does the client include its interfaces'IPs in the request sent?
 - Expected:
   - with problematic middlebox: maybe a HTTP 200 rather than 3XX ?
   - without: the HTTP 3XX code expected
+- Notes: see http://stackoverflow.com/questions/290996/http-status-code-with-libcurl for libcurl implementation.
 
 ### SMTP sending
 

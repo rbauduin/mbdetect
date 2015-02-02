@@ -23,17 +23,20 @@ mapping mappings[] =  {
 int mappings_len = sizeof(mappings)/sizeof(mappings[0]);
 
 
- 
+// stuff to write output to file
+// *****************************
 // structure keeping where we write
 typedef struct write_dest {
 	FILE *fd;
 	size_t size;
 } file_write;
 
+// callback discarding data
 static size_t discard_data(void *ptr, size_t size, size_t nmemb, void *userp){
   return size*nmemb;
 }
 
+// callback writing data to file
 static size_t
 write_in_file(void *contents, size_t size, size_t nmemb, void *userp)
 {
@@ -43,11 +46,11 @@ write_in_file(void *contents, size_t size, size_t nmemb, void *userp)
   written = fwrite(contents, size, nmemb, dest->fd);
   return written*size;
 }
+//------------------------------------
 
 
 
-
-
+// find a mapping options as string -> option symbol
 int find_mapping(const char* option, mapping* m) {
 	int i=0;
 	mapping found;
@@ -55,7 +58,6 @@ int find_mapping(const char* option, mapping* m) {
 		i++;
 	}
 	if (i<mappings_len) {
-		//printf("mapping %s = option %s\n", mappings[i].name, option);
 		*m = mappings[i];
 		return 0;
 	}
@@ -66,6 +68,7 @@ int find_mapping(const char* option, mapping* m) {
 
 }
  
+// return the value of the symbol whose name is passed as string
 int find_code(const char* option) {
 	int i=0;
 	while (i<mappings_len && strcmp(mappings[i].name,option)) {
@@ -97,28 +100,48 @@ int read_config(char* path, config_t * cfg) {
 }
 
 void set_options(CURL* curl, config_setting_t *test){
-	int j;
-	config_setting_t *options = config_setting_get_member(test, "options");
-	int options_count = config_setting_length(options);
+	int j, options_count;
+	// an option, its name and its value
+	config_setting_t *option, *name, *value;
+	// all options
+	config_setting_t *options;
+	// option's name as string, and option's string value
+	const char * name_str, *value_str;
+	// options's long value
+	long value_long;
+	// result of mapping search
+	int mapping_found;
+	mapping m;
+
+
+	// iterate over options
+	options = config_setting_get_member(test, "options");
+	options_count = config_setting_length(options);
 	for (j=0; j<options_count; j++){
-		config_setting_t *option=config_setting_get_elem(options,j);
-		config_setting_t *name = config_setting_get_member(option, "name");
-		config_setting_t *value = config_setting_get_member(option, "value");
-		const char *name_str = config_setting_get_string(name);
+		// get the option's entry, its name item and its value item.
+		option=config_setting_get_elem(options,j);
+		name = config_setting_get_member(option, "name");
+		value = config_setting_get_member(option, "value");
+
+		// get the option's name string from the option's name item.
+		// then extract the mapping to know the type of its value,
+		// so we call the right function (config_setting_get_string or _get_long)
+		// before we finally set the option on curl
+		name_str = config_setting_get_string(name);
 		mapping m;
-		int r = find_mapping(name_str,&m);
-		if (r) {
+		mapping_found = find_mapping(name_str,&m);
+		if (mapping_found) {
 			printf("ERROR, no mapping found!\n");
 			exit(1);
 		}
 		//printf("mapping : %s %s\n",m.name,m.type);
 		if (!strncmp(m.type,"str",3)) {
-			const char *value_str = config_setting_get_string(value);
+			value_str = config_setting_get_string(value);
 		//	printf("STR %s = %s\n", name_str, value_str);
 			curl_easy_setopt(curl, find_code(name_str), value_str); 
 		}
 		else if (!strncmp(m.type,"long",4)){
-			long value_long = config_setting_get_int64(value);
+			value_long = config_setting_get_int64(value);
 		//	printf("LONG %s = %lu\n", name_str, value_long);
 			curl_easy_setopt(curl, find_code(name_str), value_long); 
 		}
@@ -128,35 +151,56 @@ void set_options(CURL* curl, config_setting_t *test){
 	}
 }
 
-void set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers){
-	int j,res;
+int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers){
+	// index, curl result, number of headers
+	int j,res, headers_count;
+	// the header string
+	const char *header;
 	config_setting_t *cfg_headers = config_setting_get_member(test, "headers");
 	if (cfg_headers==NULL)
-		return ;
-	int headers_count = config_setting_length(cfg_headers);
+		return CURLE_OK;
+	// iterate over the list of header strings and add each to the curl_slist *headers
+	headers_count = config_setting_length(cfg_headers);
 	for (j=0; j<headers_count; j++){
-		const char* header=config_setting_get_string_elem(cfg_headers,j);
+		header=config_setting_get_string_elem(cfg_headers,j);
 		headers = curl_slist_append(headers, header); 
 	}
+	// add the headers list to curl
     	res = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers); 
+	return res;
 }
 
 void set_output(CURL* curl, config_setting_t *test, void *userp){
+	
+	// output_file setting
 	config_setting_t *output_file = config_setting_get_member(test, "output_file");
+	// path string retrieved from output_file setting
+	const char *path;
+	// structure used to keep fd and size written, passed to successive calls 
+	// of curl callbacks.
+	file_write *dest; 
+	// file opened for writing
+	FILE * f;
+
+	// discard data if no output_file present
 	if (output_file==NULL){
 	    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_data);
 	}
 	else {
-		file_write *dest = (file_write *) userp;
-		const char *path = config_setting_get_string(output_file);
+		// specify callback to call when receiving data 
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_in_file);
-		FILE *f = fopen(path,"w");
+		
+		// setup the config structure passed to successive call of the callback
+		file_write *dest = (file_write *) userp;
+		path = config_setting_get_string(output_file);
+		f = fopen(path,"w");
 		dest->fd=f;
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, userp);
 	}
 }
 
 void clean_output(config_setting_t *test, void *userp){
+	// if there was output writted to a file, clean stuff
 	config_setting_t *output_file = config_setting_get_member(test, "output_file");
 	if (output_file==NULL){
 	    return;
@@ -171,14 +215,25 @@ void clean_output(config_setting_t *test, void *userp){
 }
 
 #define add_mapping(tab,code,type) tab[(code)] = (mapping) {#code, code, type} 
-int main(void)
+int main(int argc, char *argv[])
 {
   CURL *curl;
   CURLcode res;
   config_t cfg;
+  char *tests_file;
   int ret,i,j,k,l,repeat_query,count,queries_count;
+
+  printf("Argc = %d\n", argc);
+  if (argc<2){
+	  tests_file="one_test.cfg";
+  } else {
+	  tests_file=argv[1];
+  }
+
+  printf("test file = %s\n", tests_file);
+
  
-  ret = read_config("curl_tests.cfg", &cfg);
+  ret = read_config(tests_file, &cfg);
   if(curl && ret==0) {
     config_setting_t *tests = config_lookup(&cfg, "tests");
     if(tests != NULL) {
