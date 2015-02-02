@@ -29,7 +29,34 @@ Here are tests that we would run. See below for details.
 - IP of client: compare ip seen by server with ip of client
 - FTP connection
 - FTP connection with round robin scheduler and commands on each path.
+- HTTP redirect
 
+## What to validate in tests
+
+- content-length
+- http headers received by server
+- http headers received by client
+- port numbers in subsequent queries (identical for keep-alive, different for closing)
+- http response
+- hash of content
+
+## Test-run description
+
+Client contacts server. Here's what happens
+
+- registers the run
+- downloads the tests definition file
+- server sets up stuff to collect the run's data
+
+The client gets a run-id back.
+
+Then the client starts to send the requests to the server. Here's how it works:
+
+- client send request. Needs to contain run-id, test-id and query-number. 
+- server gets requests, records in the run's data the test-id, query-number, and the query received. QUESTION: does the server already validate the headers received? It then handles the request and sends the response. QUESTION: does the response include what the server got in as request so the client can do a comparison?
+- client gets response, validates results. If this was the last query of the test, send result to the server. If not, repeat this cycle with the next query of the test.
+
+## Tests description
 
 ### Non-responsive HTTP
 
@@ -147,6 +174,14 @@ QUESTION: does the client include its interfaces'IPs in the request sent?
 - Expected:
   - with problematic middlebox: Same ports used for two last queries
   - without: different ports used as tcp connection should be closed
+
+### HTTP Redirect
+
+- Goal: does the client get the redirect response?
+- Desc: send a GET request to a URL returning a 302 or 301, and check this is what the client gets
+- Expected:
+  - with problematic middlebox: maybe a HTTP 200 rather than 3XX ?
+  - without: the HTTP 3XX code expected
 
 ### SMTP sending
 

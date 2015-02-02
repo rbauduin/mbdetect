@@ -178,7 +178,7 @@ int main(void)
   config_t cfg;
   int ret,i,j,k,l,repeat_query,count,queries_count;
  
-  ret = read_config("one_test.cfg", &cfg);
+  ret = read_config("curl_tests.cfg", &cfg);
   if(curl && ret==0) {
     config_setting_t *tests = config_lookup(&cfg, "tests");
     if(tests != NULL) {
