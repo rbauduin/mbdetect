@@ -219,9 +219,31 @@ int main(int argc, char *argv[])
 {
   CURL *curl;
   CURLcode res;
+  // config root
   config_t cfg;
+  // tests list entry
+  config_setting_t *tests;
+  // number of tests and index in loop
+  int tests_count, i;
+  //test entry and test name string
+  config_setting_t *test, *name_setting
+  // string value of name_setting
+  const char * name_str;
+
+  // queries of a test entry, and the setting entry giving the number of time it should be issued
+  config_setting_t *queries, repeat_setting;
+  // number of queries in queries config entry, its index in loop, 
+  // number of time to repeat query and its index in loop
+  int queries_count, k, repeat_query, l;
+
+
+  // headers to be set on query
+  struct curl_slist * curl_headers;
+
+  // path to config file
   char *tests_file;
-  int ret,i,j,k,l,repeat_query,count,queries_count;
+  // was config reas successfully?
+  int config_read;
 
   printf("Argc = %d\n", argc);
   if (argc<2){
@@ -233,42 +255,49 @@ int main(int argc, char *argv[])
   printf("test file = %s\n", tests_file);
 
  
-  ret = read_config(tests_file, &cfg);
-  if(curl && ret==0) {
-    config_setting_t *tests = config_lookup(&cfg, "tests");
+  // read config
+  config_read = read_config(tests_file, &cfg);
+  if(curl && config_read==0) {
+    //extract tests
+    tests = config_lookup(&cfg, "tests");
     if(tests != NULL) {
-      count = config_setting_length(tests);
-      int i;
+      tests_count = config_setting_length(tests);
        
       printf("found %d tests\n", count);
     }
-    for (i=0; i<count; i++){
-	    config_setting_t *test = config_setting_get_elem(tests, i);
-	    config_setting_t *name_setting = config_setting_get_member(test, "name");
+    // iterate on tests
+    for (i=0; i<tests_count; i++){
+	    test = config_setting_get_elem(tests, i);
+	    name_setting = config_setting_get_member(test, "name");
 	    if (name_setting!=NULL){
-		    const char *name = config_setting_get_string(name_setting);
-		    printf("%s running...\n", name);
+		    name_str = config_setting_get_string(name_setting);
+		    printf("%s running...\n", name_str);
 	    }
-	    config_setting_t *queries = config_setting_get_member(test, "queries");
+	    // extract queries
+	    queries = config_setting_get_member(test, "queries");
 	    queries_count = config_setting_length(queries);
+	    // iterate on queries
 	    for(k=0;k<queries_count;k++){
 		    file_write dest;
 		    curl = curl_easy_init();
+		    // get query of this iteration
 		    config_setting_t *query = config_setting_get_elem(queries, k);
 
+		    // set options and headers
 		    set_options(curl, query);
 		    set_output(curl, query, &dest);
-		    struct curl_slist * curl_headers=NULL;
+		    curl_headers=NULL;
 		    set_headers(curl, query, curl_headers);
 
-		    config_setting_t *repeat_setting = config_setting_get_member(query, "repeat");
+		    // determine repetitions
+		    repeat_setting = config_setting_get_member(query, "repeat");
 		    if (repeat_setting!=NULL) {
 			    repeat_query = config_setting_get_int(repeat_setting);
 		    }
 		    else {
 			    repeat_query = 1;
 		    }
-		    /* Perform the request, res will get the return code */ 
+		    /* Perform the request(s), res will get the return code */ 
 		    for(l=0; l<repeat_query; l++) {
 			    res = curl_easy_perform(curl);
 			    /* Check for errors */ 
