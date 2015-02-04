@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <libconfig.h>
 
+// libsodium for hash computation
+#include <sodium.h>
+
 
 typedef struct {
 	char *name;
@@ -31,21 +34,28 @@ int mappings_len = sizeof(mappings)/sizeof(mappings[0]);
 typedef struct write_dest {
 	FILE *fd;
 	size_t size;
-} body_specs;
+	const char *path;
+	crypto_hash_sha256_state sha_state;
+} payload_specs;
 
 // callback discarding data
 static size_t discard_data(void *ptr, size_t size, size_t nmemb, void *userp){
-  return size*nmemb;
+	payload_specs *specs;
+	size_t realsize = size * nmemb;
+	specs = (payload_specs *)userp;
+	crypto_hash_sha256_update(&(specs->sha_state), ptr, realsize);
+	return size*nmemb;
 }
 
 // callback writing data to file
 static size_t
 write_in_file(void *contents, size_t size, size_t nmemb, void *userp)
 {
-  body_specs *dest;
+  payload_specs *specs;
   size_t realsize = size * nmemb, written;
-  dest = (body_specs *)userp;
-  written = fwrite(contents, size, nmemb, dest->fd);
+  specs = (payload_specs *)userp;
+  written = fwrite(contents, size, nmemb, specs->fd);
+  crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
   return written*size;
 }
 //------------------------------------
@@ -257,17 +267,22 @@ void set_output(CURL* curl, config_setting_t *test, void *userp){
 	const char *path;
 	// structure used to keep fd and size written, passed to successive calls 
 	// of curl callbacks.
-	body_specs *dest; 
+	payload_specs *specs; 
 	// file opened for writing
 	FILE * f;
+
+	// define specs, holds fp, sha context, etc
+	specs = (payload_specs *) userp;
+	// and initialise the sha state
+	crypto_hash_sha256_init(&(specs->sha_state));
 
 	// discard data if no output_file present
 	if (output_file==NULL){
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_data);
 
 		// Do not write to file, but we'll still compute the hash
-		body_specs *dest = (body_specs *) userp;
-		dest->fd=NULL;
+		specs->fd=NULL;
+		specs->path=NULL;
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, userp);
 	}
 	else {
@@ -275,10 +290,10 @@ void set_output(CURL* curl, config_setting_t *test, void *userp){
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_in_file);
 
 		// setup the config structure passed to successive call of the callback
-		body_specs *dest = (body_specs *) userp;
 		path = config_setting_get_string(output_file);
 		f = fopen(path,"w");
-		dest->fd=f;
+		specs->fd=f;
+		specs->path=path;
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, userp);
 	}
 }
@@ -290,7 +305,7 @@ void clean_output(config_setting_t *test, void *userp){
 	    return;
 	}
 	else {
-		body_specs *dest = (body_specs *) userp;
+		payload_specs *dest = (payload_specs *) userp;
 		fclose(dest->fd);	
 		// FIXME: reset user structure to empty
 		dest->fd=NULL;
@@ -346,7 +361,7 @@ int main(int argc, char *argv[])
  
   // read config
   config_read = read_config(tests_file, &cfg);
-  if(curl && config_read==0) {
+  if(config_read==0) {
     //extract tests
     tests = config_lookup(&cfg, "tests");
     if(tests != NULL) {
@@ -367,14 +382,14 @@ int main(int argc, char *argv[])
 	    queries_count = config_setting_length(queries);
 	    // iterate on queries
 	    for(k=0;k<queries_count;k++){
-		    body_specs dest;
+		    payload_specs body_specs;
 		    curl = curl_easy_init();
 		    // get query of this iteration
 		    config_setting_t *query = config_setting_get_elem(queries, k);
 
 		    // set options and headers
 		    set_options(curl, query);
-		    set_output(curl, query, &dest);
+		    set_output(curl, query, &body_specs);
 		    curl_headers=NULL;
 		    set_headers(curl, query, curl_headers);
 
@@ -426,9 +441,15 @@ int main(int argc, char *argv[])
 					    }
 				    }
 			    }
+			    // FIXME: move var declarations or put this in a function
+			    unsigned char out[crypto_hash_sha256_BYTES];
+			    crypto_hash_sha256_final(&(body_specs.sha_state), out);
+			    char* sha=malloc(sizeof(out)*2+1);
+			    sodium_bin2hex(sha, sizeof(out)*2+1, out, sizeof(out));
+			    printf("body sha256 (file=%s):\n%s\n", body_specs.path,sha);
 		    }
 		    /* always cleanup */ 
-		    clean_output(query, &dest);
+		    clean_output(query, &body_specs);
 		    curl_slist_free_all(curl_headers);
 		    curl_easy_cleanup(curl);
 	    }
