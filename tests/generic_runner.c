@@ -31,7 +31,7 @@ int mappings_len = sizeof(mappings)/sizeof(mappings[0]);
 typedef struct write_dest {
 	FILE *fd;
 	size_t size;
-} file_write;
+} body_specs;
 
 // callback discarding data
 static size_t discard_data(void *ptr, size_t size, size_t nmemb, void *userp){
@@ -42,9 +42,9 @@ static size_t discard_data(void *ptr, size_t size, size_t nmemb, void *userp){
 static size_t
 write_in_file(void *contents, size_t size, size_t nmemb, void *userp)
 {
-  file_write *dest;
+  body_specs *dest;
   size_t realsize = size * nmemb, written;
-  dest = (file_write *)userp;
+  dest = (body_specs *)userp;
   written = fwrite(contents, size, nmemb, dest->fd);
   return written*size;
 }
@@ -160,6 +160,7 @@ int find_code(const char* option) {
 }
 
 
+// read the config file containing test specs
 int read_config(char* path, config_t * cfg) {
   config_init(cfg);
 
@@ -174,6 +175,7 @@ int read_config(char* path, config_t * cfg) {
   return 0;
 }
 
+// set curl options
 void set_options(CURL* curl, config_setting_t *test){
 	int j, options_count;
 	// an option, its name and its value
@@ -226,6 +228,7 @@ void set_options(CURL* curl, config_setting_t *test){
 	}
 }
 
+// set http headers
 int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers){
 	// index, curl result, number of headers
 	int j,res, headers_count;
@@ -245,6 +248,7 @@ int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers){
 	return res;
 }
 
+// where to write the data received
 void set_output(CURL* curl, config_setting_t *test, void *userp){
 	
 	// output_file setting
@@ -253,20 +257,25 @@ void set_output(CURL* curl, config_setting_t *test, void *userp){
 	const char *path;
 	// structure used to keep fd and size written, passed to successive calls 
 	// of curl callbacks.
-	file_write *dest; 
+	body_specs *dest; 
 	// file opened for writing
 	FILE * f;
 
 	// discard data if no output_file present
 	if (output_file==NULL){
-	    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_data);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_data);
+
+		// Do not write to file, but we'll still compute the hash
+		body_specs *dest = (body_specs *) userp;
+		dest->fd=NULL;
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, userp);
 	}
 	else {
 		// specify callback to call when receiving data 
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_in_file);
-		
+
 		// setup the config structure passed to successive call of the callback
-		file_write *dest = (file_write *) userp;
+		body_specs *dest = (body_specs *) userp;
 		path = config_setting_get_string(output_file);
 		f = fopen(path,"w");
 		dest->fd=f;
@@ -281,7 +290,7 @@ void clean_output(config_setting_t *test, void *userp){
 	    return;
 	}
 	else {
-		file_write *dest = (file_write *) userp;
+		body_specs *dest = (body_specs *) userp;
 		fclose(dest->fd);	
 		// FIXME: reset user structure to empty
 		dest->fd=NULL;
@@ -326,7 +335,6 @@ int main(int argc, char *argv[])
   // was config reas successfully?
   int config_read;
 
-  printf("Argc = %d\n", argc);
   if (argc<2){
 	  tests_file="one_test.cfg";
   } else {
@@ -359,7 +367,7 @@ int main(int argc, char *argv[])
 	    queries_count = config_setting_length(queries);
 	    // iterate on queries
 	    for(k=0;k<queries_count;k++){
-		    file_write dest;
+		    body_specs dest;
 		    curl = curl_easy_init();
 		    // get query of this iteration
 		    config_setting_t *query = config_setting_get_elem(queries, k);
