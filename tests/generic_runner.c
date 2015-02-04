@@ -11,13 +11,15 @@ typedef struct {
 	char *type;
 } mapping;
 mapping mappings[] =  {
-	{"CURLOPT_URL", CURLOPT_URL, "str"},
-	{"CURLOPT_HEADER", CURLOPT_HEADER, "long"},
-	{"CURLOPT_FOLLOWLOCATION", CURLOPT_FOLLOWLOCATION, "long"},
-	{"CURLOPT_POST", CURLOPT_POST, "long"},
-	{"CURLOPT_POSTFIELDSIZE", CURLOPT_POSTFIELDSIZE, "long"},
-	{"CURLOPT_POSTFIELDS",CURLOPT_POSTFIELDS,"str"}
-
+	{"CURLOPT_URL", CURLOPT_URL, "str"}
+	,{"CURLOPT_HEADER", CURLOPT_HEADER, "long"}
+	,{"CURLOPT_FOLLOWLOCATION", CURLOPT_FOLLOWLOCATION, "long"}
+	,{"CURLOPT_POST", CURLOPT_POST, "long"}
+	,{"CURLOPT_POSTFIELDSIZE", CURLOPT_POSTFIELDSIZE, "long"}
+	,{"CURLOPT_POSTFIELDS",CURLOPT_POSTFIELDS,"str"}
+	,{"CURLINFO_SIZE_DOWNLOAD",CURLINFO_SIZE_DOWNLOAD,"int"}
+	,{"CURLINFO_RESPONSE_CODE",CURLINFO_RESPONSE_CODE ,"int"}
+	
 }; 
 
 int mappings_len = sizeof(mappings)/sizeof(mappings[0]);
@@ -50,6 +52,79 @@ write_in_file(void *contents, size_t size, size_t nmemb, void *userp)
 
 
 
+// FIXME: can we limit code duplication here?
+
+// ----- double validations
+int extract_double(config_setting_t* entry, const char* name, double* value) {
+	config_setting_t *name_entry = config_setting_get_member(entry, "name");
+	config_setting_t *value_entry = config_setting_get_member(entry, "value");
+	if (name_entry == NULL || value_entry == NULL) {
+		return -1;
+	}
+	name = config_setting_get_string(name_entry);
+	*value = config_setting_get_float(value_entry);
+	return 0;
+}
+
+int get_actual_double(CURL *curl, const char *name, double* actual) {
+	int code;
+	code = find_code(name);
+	curl_easy_getinfo(curl, code, actual);
+}
+int double_equal_validation(CURL* curl,config_setting_t* validation) {
+	double expected, actual;
+	config_setting_t *name_setting;
+	const char * name;
+
+	name_setting = config_setting_get_member(validation, "name");
+	name = config_setting_get_string(name_setting);
+	extract_double(validation, name,&expected);
+	get_actual_double(curl, name, &actual);
+	if (actual==expected){
+		printf("As expected, %f = %f\n",actual, expected);
+	}
+	else {
+		printf("UNEXPECTED, got %f but expected %f\n", actual, expected);
+	}
+
+}
+
+
+// ----- int validations
+int extract_int(config_setting_t* entry, const char* name, int* value) {
+	config_setting_t *name_entry = config_setting_get_member(entry, "name");
+	config_setting_t *value_entry = config_setting_get_member(entry, "value");
+	if (name_entry == NULL || value_entry == NULL) {
+		return -1;
+	}
+	name = config_setting_get_string(name_entry);
+	*value = config_setting_get_int(value_entry);
+	return 0;
+}
+
+int get_actual_int(CURL *curl, const char *name, int* actual) {
+	int code;
+	code = find_code(name);
+	curl_easy_getinfo(curl, code, actual);
+}
+int int_equal_validation(CURL* curl,config_setting_t* validation) {
+	int expected, actual;
+	config_setting_t *name_setting;
+	const char * name;
+
+	name_setting = config_setting_get_member(validation, "name");
+	name = config_setting_get_string(name_setting);
+	extract_int(validation, name,&expected);
+	get_actual_int(curl, name, &actual);
+	if (actual==expected){
+		printf("As expected, %s %d = %d\n", name, actual, expected);
+	}
+	else {
+		printf("UNEXPECTED, got %d but expected %d\n", actual, expected);
+	}
+
+}
+
 // find a mapping options as string -> option symbol
 int find_mapping(const char* option, mapping* m) {
 	int i=0;
@@ -78,7 +153,7 @@ int find_code(const char* option) {
 		return mappings[i].code;
 	}
 	else {
-		error("Options %s not handled by this code\n", option);
+		printf("Options %s not handled by this code\n", option);
 		return -1;
 	}
 
@@ -226,16 +301,22 @@ int main(int argc, char *argv[])
   // number of tests and index in loop
   int tests_count, i;
   //test entry and test name string
-  config_setting_t *test, *name_setting
+  config_setting_t *test, *name_setting;
   // string value of name_setting
   const char * name_str;
 
   // queries of a test entry, and the setting entry giving the number of time it should be issued
-  config_setting_t *queries, repeat_setting;
+  config_setting_t *queries, *repeat_setting;
   // number of queries in queries config entry, its index in loop, 
   // number of time to repeat query and its index in loop
   int queries_count, k, repeat_query, l;
 
+  // validations list entry, validation entry and validation name entry
+  config_setting_t *validations, *validation, *type_entry;
+  // string value of name_setting, and validation type as string
+  const char * validation_str, *type_str;
+  // validations number and its index in loop
+  int validations_count, m;
 
   // headers to be set on query
   struct curl_slist * curl_headers;
@@ -263,7 +344,7 @@ int main(int argc, char *argv[])
     if(tests != NULL) {
       tests_count = config_setting_length(tests);
        
-      printf("found %d tests\n", count);
+      printf("found %d tests\n", tests_count);
     }
     // iterate on tests
     for (i=0; i<tests_count; i++){
@@ -306,8 +387,36 @@ int main(int argc, char *argv[])
 				    fprintf(stderr, "curl_easy_perform() failed: %s\n",
 						    curl_easy_strerror(res));
 			    else {
-				    curl_easy_getinfo(curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &content_len);
-				    printf("Content length was : %f\n", content_len);
+				    // extract validations for the query
+				    validations = config_setting_get_member(query, "validations");
+				    if (validations != NULL) {
+					    printf("Performing validations\n");
+					    validations_count = config_setting_length(validations);
+					    // iterate over validation of this query
+					    for(m=0;m<validations_count;m++){
+						    validation = config_setting_get_elem(validations, m);
+						    type_entry = config_setting_get_member(validation, "type");
+						    // validation possible only if its type is specified
+						    if (type_entry!=NULL){
+							    type_str = config_setting_get_string(type_entry);
+							    // curl option of type int
+							    if (!strncmp(type_str, "int_equal", sizeof(type_str))){
+								    int_equal_validation(curl, validation);
+							    }
+							    // curl option of type double
+							    else if (!strncmp(type_str, "double_equal", sizeof(type_str))){
+								    double_equal_validation(curl, validation);
+							    }
+							    // unknown test type
+							    else {
+								    printf("VALIDATION TYPE UNKNOWN : %s\n", type_str);
+							    }
+						    }
+						    else {
+							    continue;
+						    }
+					    }
+				    }
 			    }
 		    }
 		    /* always cleanup */ 
