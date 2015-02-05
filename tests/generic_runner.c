@@ -277,36 +277,49 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 
 	// discard data if no output_file present
 	if (output_file==NULL){
+		// discard both data and headers
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_data);
+		curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, discard_data);
 
 		// Do not write to file, but we'll still compute the hash
+		// Body
 		body_specs->fd=NULL;
 		body_specs->path=NULL;
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, body_specs);
+		// Headers
+		headers_specs->fd=NULL;
+		headers_specs->path=NULL;
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, headers_specs);
 	}
 	else {
-		// specify callback to call when receiving data 
+		// specify callback to call when receiving data for body and headers
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_in_file);
 		curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, write_in_file);
 
 		// setup the config structure passed to successive call of the callback
+		// the base_path is found in the config file. To that
+		// we append -D for the body, and -H for the headers,
+		// and we have the files paths where we write to
 		base_path = config_setting_get_string(output_file);
 		final_path_len = strlen(base_path)+2;
-		// postfix with -H for headers, -D for body. +1 for \0
+		// +1 for \0
 		headers_path = malloc(final_path_len+1);
 		body_path = malloc(final_path_len+1);
 
+		// concatenate path and suffix
 		strncpy(headers_path, base_path, final_path_len+1);
 		strncat(headers_path, "-H", final_path_len+1);
 
 		strncpy(body_path, base_path, final_path_len+1);
 		strncat(body_path, "-D", final_path_len+1);
 
+		// open file handle, setup struct and passit to curl
+		// Body
 		f = fopen(body_path,"w");
 		body_specs->fd=f;
 		body_specs->path=body_path;
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, body_specs);
-
+		// Headers
 		fh = fopen(headers_path,"w");
 		headers_specs->fd=fh;
 		headers_specs->path=headers_path;
@@ -315,15 +328,17 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 }
 
 void clean_output(config_setting_t *test, payload_specs *headers_specs,payload_specs  *body_specs ){
-	// if there was output writted to a file, clean stuff
+	// if there was output written to a file, clean stuff
 	config_setting_t *output_file = config_setting_get_member(test, "output_file");
 	if (output_file==NULL){
 	    return;
 	}
 	else {
+		// close file handles
 		fclose(body_specs->fd);	
 		fclose(headers_specs->fd);	
 		// FIXME: reset user structure to empty
+		// free memory allocated in set_output, and reset struct members
 		body_specs->fd=NULL;
 		body_specs->size=0;
 		headers_specs->fd=NULL;
