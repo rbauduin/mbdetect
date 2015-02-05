@@ -35,12 +35,18 @@ typedef struct write_dest {
 	FILE *fd;
 	size_t size;
 	char *path;
+	char type; // D for body, H for headers
 	crypto_hash_sha256_state sha_state;
 } payload_specs;
 
 // callback discarding data
-static size_t discard_data(void *ptr, size_t size, size_t nmemb, payload_specs *specs){
-	crypto_hash_sha256_update(&(specs->sha_state), ptr, size*nmemb);
+static size_t discard_data(void *contents, size_t size, size_t nmemb, payload_specs *specs){
+	// for headers only complete lines are passed.
+	// this mean we can check the header we handle, and skip the ones
+	// that are not present in the sha256 (start with X-NH-)
+	if (specs->type == 'H' && strstr(contents,"X-NH-")==NULL) {
+		crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
+	}
 	return size*nmemb;
 }
 
@@ -49,8 +55,17 @@ static size_t
 write_in_file(void *contents, size_t size, size_t nmemb, payload_specs *specs)
 {
   size_t realsize = size * nmemb, written;
-  written = fwrite(contents, size, nmemb, specs->fd);
-  crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
+  // for headers only complete lines are passed.
+  // this mean we can check the header we handle, and skip the ones
+  // that are not present in the sha256 (start with X-NH-)
+  if (specs->type == 'H' && strstr(contents,"X-NH-")!=NULL) {
+	  written = nmemb;
+  }
+  else {
+	// ccurrently we do not write the header in the output file either.
+	written = fwrite(contents, size, nmemb, specs->fd);
+	crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
+  }
   return written*size;
 }
 //------------------------------------
@@ -412,8 +427,11 @@ int main(int argc, char *argv[])
 	    queries_count = config_setting_length(queries);
 	    // iterate on queries
 	    for(k=0;k<queries_count;k++){
+		    // initialise body and headers structures passed to curl callbacks
 		    payload_specs body_specs;
+		    body_specs.type='D';
 		    payload_specs headers_specs;
+		    headers_specs.type='H';
 		    curl = curl_easy_init();
 		    // get query of this iteration
 		    config_setting_t *query = config_setting_get_elem(queries, k);
