@@ -1,1 +1,1 @@
-gcc 01_test.c mongoose.c -pthread -o 01_test
+gcc server.c mongoose.c -pthread -lsodium -o server
