@@ -39,21 +39,16 @@ typedef struct write_dest {
 } payload_specs;
 
 // callback discarding data
-static size_t discard_data(void *ptr, size_t size, size_t nmemb, void *userp){
-	payload_specs *specs;
-	size_t realsize = size * nmemb;
-	specs = (payload_specs *)userp;
-	crypto_hash_sha256_update(&(specs->sha_state), ptr, realsize);
+static size_t discard_data(void *ptr, size_t size, size_t nmemb, payload_specs *specs){
+	crypto_hash_sha256_update(&(specs->sha_state), ptr, size*nmemb);
 	return size*nmemb;
 }
 
 // callback writing data to file
 static size_t
-write_in_file(void *contents, size_t size, size_t nmemb, void *userp)
+write_in_file(void *contents, size_t size, size_t nmemb, payload_specs *specs)
 {
-  payload_specs *specs;
   size_t realsize = size * nmemb, written;
-  specs = (payload_specs *)userp;
   written = fwrite(contents, size, nmemb, specs->fd);
   crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
   return written*size;
@@ -289,7 +284,7 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 		// Headers
 		headers_specs->fd=NULL;
 		headers_specs->path=NULL;
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, headers_specs);
+		curl_easy_setopt(curl, CURLOPT_HEADERDATA, headers_specs);
 	}
 	else {
 		// specify callback to call when receiving data for body and headers
