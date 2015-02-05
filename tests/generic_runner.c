@@ -273,6 +273,7 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 
 	// and initialise the sha state
 	crypto_hash_sha256_init(&(body_specs->sha_state));
+	crypto_hash_sha256_init(&(headers_specs->sha_state));
 
 	// discard data if no output_file present
 	if (output_file==NULL){
@@ -467,6 +468,10 @@ int main(int argc, char *argv[])
 			    char* sha=malloc(sizeof(out)*2+1);
 			    sodium_bin2hex(sha, sizeof(out)*2+1, out, sizeof(out));
 			    printf("body sha256 (file=%s):\n%s\n", body_specs.path,sha);
+
+			    crypto_hash_sha256_final(&(headers_specs.sha_state), out);
+			    sodium_bin2hex(sha, sizeof(out)*2+1, out, sizeof(out));
+			    printf("headers sha256 (file=%s):\n%s\n", headers_specs.path,sha);
 		    }
 		    /* always cleanup */ 
 		    clean_output(query, &headers_specs, &body_specs);
