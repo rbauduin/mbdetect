@@ -34,7 +34,7 @@ int mappings_len = sizeof(mappings)/sizeof(mappings[0]);
 typedef struct write_dest {
 	FILE *fd;
 	size_t size;
-	const char *path;
+	char *path;
 	crypto_hash_sha256_state sha_state;
 } payload_specs;
 
@@ -259,57 +259,76 @@ int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers){
 }
 
 // where to write the data received
-void set_output(CURL* curl, config_setting_t *test, void *userp){
+void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs, payload_specs *body_specs){
 	
 	// output_file setting
 	config_setting_t *output_file = config_setting_get_member(test, "output_file");
+	// length of the paths we will write to, ie with the -H and -D suffix appended
+	int final_path_len;
 	// path string retrieved from output_file setting
-	const char *path;
-	// structure used to keep fd and size written, passed to successive calls 
-	// of curl callbacks.
-	payload_specs *specs; 
-	// file opened for writing
-	FILE * f;
+	const char *base_path;
+	char *headers_path, *body_path;
+	// file opened for writing body, and headers
+	FILE * f, *fh;
 
-	// define specs, holds fp, sha context, etc
-	specs = (payload_specs *) userp;
 	// and initialise the sha state
-	crypto_hash_sha256_init(&(specs->sha_state));
+	crypto_hash_sha256_init(&(body_specs->sha_state));
 
 	// discard data if no output_file present
 	if (output_file==NULL){
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_data);
 
 		// Do not write to file, but we'll still compute the hash
-		specs->fd=NULL;
-		specs->path=NULL;
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, userp);
+		body_specs->fd=NULL;
+		body_specs->path=NULL;
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, body_specs);
 	}
 	else {
 		// specify callback to call when receiving data 
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_in_file);
+		curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, write_in_file);
 
 		// setup the config structure passed to successive call of the callback
-		path = config_setting_get_string(output_file);
-		f = fopen(path,"w");
-		specs->fd=f;
-		specs->path=path;
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, userp);
+		base_path = config_setting_get_string(output_file);
+		final_path_len = strlen(base_path)+2;
+		// postfix with -H for headers, -D for body. +1 for \0
+		headers_path = malloc(final_path_len+1);
+		body_path = malloc(final_path_len+1);
+
+		strncpy(headers_path, base_path, final_path_len+1);
+		strncat(headers_path, "-H", final_path_len+1);
+
+		strncpy(body_path, base_path, final_path_len+1);
+		strncat(body_path, "-D", final_path_len+1);
+
+		f = fopen(body_path,"w");
+		body_specs->fd=f;
+		body_specs->path=body_path;
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, body_specs);
+
+		fh = fopen(headers_path,"w");
+		headers_specs->fd=fh;
+		headers_specs->path=headers_path;
+		curl_easy_setopt(curl, CURLOPT_HEADERDATA, headers_specs);
 	}
 }
 
-void clean_output(config_setting_t *test, void *userp){
+void clean_output(config_setting_t *test, payload_specs *headers_specs,payload_specs  *body_specs ){
 	// if there was output writted to a file, clean stuff
 	config_setting_t *output_file = config_setting_get_member(test, "output_file");
 	if (output_file==NULL){
 	    return;
 	}
 	else {
-		payload_specs *dest = (payload_specs *) userp;
-		fclose(dest->fd);	
+		fclose(body_specs->fd);	
+		fclose(headers_specs->fd);	
 		// FIXME: reset user structure to empty
-		dest->fd=NULL;
-		dest->size=0;
+		body_specs->fd=NULL;
+		body_specs->size=0;
+		headers_specs->fd=NULL;
+		headers_specs->size=0;
+		free(body_specs->path);
+		free(headers_specs->path);
 	}
 }
 
@@ -383,13 +402,14 @@ int main(int argc, char *argv[])
 	    // iterate on queries
 	    for(k=0;k<queries_count;k++){
 		    payload_specs body_specs;
+		    payload_specs headers_specs;
 		    curl = curl_easy_init();
 		    // get query of this iteration
 		    config_setting_t *query = config_setting_get_elem(queries, k);
 
 		    // set options and headers
 		    set_options(curl, query);
-		    set_output(curl, query, &body_specs);
+		    set_output(curl, query, &headers_specs, &body_specs);
 		    curl_headers=NULL;
 		    set_headers(curl, query, curl_headers);
 
@@ -449,7 +469,7 @@ int main(int argc, char *argv[])
 			    printf("body sha256 (file=%s):\n%s\n", body_specs.path,sha);
 		    }
 		    /* always cleanup */ 
-		    clean_output(query, &body_specs);
+		    clean_output(query, &headers_specs, &body_specs);
 		    curl_slist_free_all(curl_headers);
 		    curl_easy_cleanup(curl);
 	    }
