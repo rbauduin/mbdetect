@@ -114,7 +114,13 @@ void extract_header(char* contents, char** name, char** value){
 
 int validate_header(control_header *list, char* header_name, char* expected_value) {
 	char* header_value=NULL;
+	if (list==NULL || expected_value==NULL || header_name==NULL){
+		return 0;
+	}
 	get_header_value(list, header_name, &header_value);
+	if (header_value==NULL) {
+		return -1;
+	}
 	return !strcmp(expected_value,header_value);
 }
 
@@ -631,10 +637,12 @@ int main(int argc, char *argv[])
 
 				    char *headers_h;
 				    get_header_value(headers_specs.control_headers, HEADERS_HASH_NAME, &headers_h);
-				    if (headers_specs.control_headers==NULL) {
+				    // FIXME: clean this code, done at the end of a too long coding session...
+				    int res = validate_header(headers_specs.control_headers, HEADERS_HASH_NAME, headers_specs.sha);
+				    if (headers_specs.control_headers==NULL || res < 0 ) {
 					    printf("HEADERS SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n");
 				    } 
-				    else if (!validate_header(headers_specs.control_headers, HEADERS_HASH_NAME, headers_specs.sha)){
+				    else if (!res) {
 					    printf("DIFFERENT SHA, headers modified!!\n");
 					    printf("transmitted headers hash: *%s*\n", headers_h);
 					    printf("headers sha256 :\n*%s*\n", headers_specs.sha);
