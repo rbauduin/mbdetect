@@ -30,22 +30,112 @@ int mappings_len = sizeof(mappings)/sizeof(mappings[0]);
 
 // stuff to write output to file
 // *****************************
+
+// store control headers sent by server in a chained list
+// their name start with X-NH- (NH for not included in hash)
+typedef struct control_header {
+	char *name;
+	char* value;
+	struct control_header* next;
+} control_header;
+
 // structure keeping where we write
 typedef struct write_dest {
+	// file descriptor curl writes the payload to
 	FILE *fd;
+	// used by curl to keep trace of what was already written
 	size_t size;
+	// path to save payload to
 	char *path;
-	char type; // D for body, H for headers
+	// payload type, D for body, H for headers 
+	char type; 
 	crypto_hash_sha256_state sha_state;
+	// FIXME: this is only for headers, and will never happen for body. Should we have 2 distinct struct? 
+	// // however, this has an impact on the rest of the code, with the type of arguments changed....
+	// hash of body sent by server
+	control_header* control_headers;
 } payload_specs;
 
+
+// extract an http header's name and value
+void extract_header(char* contents, char** name, char** value){
+	char* separator;
+	int len;
+	// find the ": " separator between name and value
+	if ((separator=strstr(contents, ": "))!=NULL) {
+		//name
+		// +1: strlcpy requires to take \0 in account
+		len = separator-contents+1;
+		*name=(char *)malloc(len);
+		memset(*name, 0, len+1);
+		strlcpy(*name,contents,len);
+		// value
+		// length of  header value, ie starting after ": "
+		// +1: strlcpy requires to take \0 in account
+		len = strlen(separator+2)+1;
+		*value=(char *)malloc(len);
+		memset(*value, 0, len);
+		strlcpy(*value, separator+2, len);
+	}
+	else{
+		//FIXME
+		// error, malformed header?
+	}
+}
+
+// add a control header entry in the linked list
+// added as new head of the list
+control_header* control_headers_prepend(control_header* list, control_header* new) {
+	// if list does not exist, this is the first entry
+	if (list==NULL) {
+		return new;
+	}
+	// prepend
+	else{
+		new->next = list;
+		return new;
+	}
+
+}
+
+// free all memory allocated when we built the control_headers linked list
+int control_headers_free(control_header* list) {
+	int i=0;
+	control_header* previous_head;
+	while (list!=NULL) {
+		free(list->name);
+		free(list->value);
+		previous_head = list;
+		list = list->next;
+		free(previous_head);
+		i++;
+	};
+	return i;
+}
+
+// add an entry in the control_headers linked list of the payload spec
+void store_control_header(char* contents, payload_specs *specs) {
+	// name and value of the header
+	char* name; char* value;
+	
+	// initialise header struct
+	control_header *header = (control_header *) malloc(sizeof(control_header));
+	header->next = NULL;
+	extract_header(contents, &(header->name), &(header->value));
+
+	// add it to the linked list
+	specs->control_headers = control_headers_prepend(specs->control_headers, header);
+
+}
 // callback discarding data
 static size_t discard_data(void *contents, size_t size, size_t nmemb, payload_specs *specs){
-	// for headers only complete lines are passed.
-	// this mean we can check the header we handle, and skip the ones
-	// that are not present in the sha256 (start with X-NH-)
-	if (specs->type == 'H' && strstr(contents,"X-NH-")==NULL) {
-		crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
+
+	crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
+
+	// for headers only complete lines are passed
+	// if this is a control header, store it
+	if (specs->type == 'H' && strstr(contents,"X-NH-")!=NULL) {
+		store_control_header(contents,specs);
 	}
 	return size*nmemb;
 }
@@ -56,13 +146,13 @@ write_in_file(void *contents, size_t size, size_t nmemb, payload_specs *specs)
 {
   size_t realsize = size * nmemb, written;
   // for headers only complete lines are passed.
-  // this mean we can check the header we handle, and skip the ones
-  // that are not present in the sha256 (start with X-NH-)
+  // control headers are stored but not added to the hash value
   if (specs->type == 'H' && strstr(contents,"X-NH-")!=NULL) {
+	  store_control_header(contents,specs);
 	  written = nmemb;
   }
   else {
-	// ccurrently we do not write the header in the output file either.
+	// currently we do not write the header in the output file either.
 	written = fwrite(contents, size, nmemb, specs->fd);
 	crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
   }
@@ -338,6 +428,9 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 }
 
 void clean_output(config_setting_t *test, payload_specs *headers_specs,payload_specs  *body_specs ){
+	// control headers are awlays collected, free them
+	control_headers_free(headers_specs->control_headers);
+	
 	// if there was output written to a file, clean stuff
 	config_setting_t *output_file = config_setting_get_member(test, "output_file");
 	if (output_file==NULL){
@@ -430,9 +523,14 @@ int main(int argc, char *argv[])
 		    // initialise body and headers structures passed to curl callbacks
 		    payload_specs body_specs;
 		    body_specs.type='D';
+		    body_specs.control_headers=NULL;
 		    payload_specs headers_specs;
 		    headers_specs.type='H';
+		    headers_specs.control_headers=NULL;
+
+		    // initialise curl
 		    curl = curl_easy_init();
+		    
 		    // get query of this iteration
 		    config_setting_t *query = config_setting_get_elem(queries, k);
 

@@ -86,6 +86,9 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
 	init_headers(&state);
 	set_header(conn, &state, "X-TeSt","WiTnEsS");
 	close_headers(conn,&state);
+	//mg_send_header(conn, "X-NH-TEST","test control header");
+	mg_send_header(conn,"X-NH-TEST","test control header");
+	mg_send_header(conn, "X-NH-RETEST","test control header");
 
     	mg_printf_data(conn, "%s\n", "Welcome hehe!");
 	mg_printf_data(conn, "%s\n", mg_get_header(conn, "Host"));
