@@ -50,11 +50,26 @@ typedef struct write_dest {
 	// payload type, D for body, H for headers 
 	char type; 
 	crypto_hash_sha256_state sha_state;
+	char sha[2*crypto_hash_sha256_BYTES+1];
 	// FIXME: this is only for headers, and will never happen for body. Should we have 2 distinct struct? 
 	// // however, this has an impact on the rest of the code, with the type of arguments changed....
 	// hash of body sent by server
 	control_header* control_headers;
 } payload_specs;
+
+void payload_specs_init(payload_specs* specs) {
+	specs->control_headers=NULL;
+	specs->fd=NULL;
+	specs->path=NULL;
+}
+
+// Finalise sha computation when payload received
+// store string value in specs->sha
+void hash_final(payload_specs* specs) {
+	unsigned char out[crypto_hash_sha256_BYTES];
+	crypto_hash_sha256_final(&(specs->sha_state), out);
+	sodium_bin2hex(specs->sha, sizeof(out)*2+1, out, sizeof(out));
+}
 
 
 // extract an http header's name and value
@@ -72,7 +87,8 @@ void extract_header(char* contents, char** name, char** value){
 		// value
 		// length of  header value, ie starting after ": "
 		// +1: strlcpy requires to take \0 in account
-		len = strlen(separator+2)+1;
+		// -2: do not include \r\n
+		len = strlen(separator+2)+1-2;
 		*value=(char *)malloc(len);
 		memset(*value, 0, len);
 		strlcpy(*value, separator+2, len);
@@ -96,6 +112,17 @@ control_header* control_headers_prepend(control_header* list, control_header* ne
 		return new;
 	}
 
+}
+
+void control_header_value(control_header* list, char* needle, char** result) {
+	while (list!=NULL){
+		if(!strcmp(list->name,needle)){
+			*result=list->value;
+			return;
+		}
+		list=list->next;
+	}
+	result=NULL;
 }
 
 // free all memory allocated when we built the control_headers linked list
@@ -383,12 +410,8 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 
 		// Do not write to file, but we'll still compute the hash
 		// Body
-		body_specs->fd=NULL;
-		body_specs->path=NULL;
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, body_specs);
 		// Headers
-		headers_specs->fd=NULL;
-		headers_specs->path=NULL;
 		curl_easy_setopt(curl, CURLOPT_HEADERDATA, headers_specs);
 	}
 	else {
@@ -522,23 +545,11 @@ int main(int argc, char *argv[])
 	    for(k=0;k<queries_count;k++){
 		    // initialise body and headers structures passed to curl callbacks
 		    payload_specs body_specs;
-		    body_specs.type='D';
-		    body_specs.control_headers=NULL;
 		    payload_specs headers_specs;
-		    headers_specs.type='H';
-		    headers_specs.control_headers=NULL;
 
-		    // initialise curl
-		    curl = curl_easy_init();
 		    
 		    // get query of this iteration
 		    config_setting_t *query = config_setting_get_elem(queries, k);
-
-		    // set options and headers
-		    set_options(curl, query);
-		    set_output(curl, query, &headers_specs, &body_specs);
-		    curl_headers=NULL;
-		    set_headers(curl, query, curl_headers);
 
 		    // determine repetitions
 		    repeat_setting = config_setting_get_member(query, "repeat");
@@ -550,6 +561,21 @@ int main(int argc, char *argv[])
 		    }
 		    /* Perform the request(s), res will get the return code */ 
 		    for(l=0; l<repeat_query; l++) {
+			    // initialise curl
+			    curl = curl_easy_init();
+			    // initialise payload specs
+			    payload_specs_init(&body_specs);
+			    body_specs.type='D';
+			    payload_specs_init(&headers_specs);
+			    headers_specs.type='H';
+		    
+			    // set options and headers
+			    set_options(curl, query);   // IMPROV: extract config parsing out of the loop, as same for all repetitions
+			    set_output(curl, query, &headers_specs, &body_specs);
+			    curl_headers=NULL;
+			    set_headers(curl, query, curl_headers);
+
+			    // Perform query
 			    res = curl_easy_perform(curl);
 			    /* Check for errors */ 
 			    double content_len;
@@ -587,22 +613,32 @@ int main(int argc, char *argv[])
 						    }
 					    }
 				    }
-			    }
-			    // FIXME: move var declarations or put this in a function
-			    unsigned char out[crypto_hash_sha256_BYTES];
-			    crypto_hash_sha256_final(&(body_specs.sha_state), out);
-			    char* sha=malloc(sizeof(out)*2+1);
-			    sodium_bin2hex(sha, sizeof(out)*2+1, out, sizeof(out));
-			    printf("body sha256 (file=%s):\n%s\n", body_specs.path,sha);
+				    // end of validations in config file
+				    
+				    // validate headers and body hash 
+				    hash_final(&body_specs);
+				    hash_final(&headers_specs);
+				    printf("SPECS body sha : \n%s\n", body_specs.sha);
+				    printf("headers sha256 :\n*%s*\n", headers_specs.sha);
 
-			    crypto_hash_sha256_final(&(headers_specs.sha_state), out);
-			    sodium_bin2hex(sha, sizeof(out)*2+1, out, sizeof(out));
-			    printf("headers sha256 (file=%s):\n%s\n", headers_specs.path,sha);
+				    char* body_h, *headers_h=NULL;
+				    control_header_value(headers_specs.control_headers, "X-NH-H-SHA256", &headers_h);
+				    if (!strcmp(headers_h, headers_specs.sha)){
+					    printf("SAME SHA, headers not modified!!\n");
+				    }
+				    else {
+					    printf("DIFFERENT SHA, headers modified!!\n");
+				    }
+				    printf("transmitted headers hash: *%s*\n", headers_h);
+
+
+				    /* cleanup after each query */ 
+				    clean_output(query, &headers_specs, &body_specs);
+				    curl_slist_free_all(curl_headers);
+				    curl_easy_cleanup(curl);
+
+			    }
 		    }
-		    /* always cleanup */ 
-		    clean_output(query, &headers_specs, &body_specs);
-		    curl_slist_free_all(curl_headers);
-		    curl_easy_cleanup(curl);
 	    }
     }
  
