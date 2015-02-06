@@ -71,6 +71,18 @@ void hash_final(payload_specs* specs) {
 	sodium_bin2hex(specs->sha, sizeof(out)*2+1, out, sizeof(out));
 }
 
+// extract header value from the headers list
+void get_header_value(control_header* list, char* needle, char** result) {
+	while (list!=NULL){
+		if(!strcmp(list->name,needle)){
+			*result=list->value;
+			return;
+		}
+		list=list->next;
+	}
+	result=NULL;
+}
+
 
 // extract an http header's name and value
 void extract_header(char* contents, char** name, char** value){
@@ -99,6 +111,12 @@ void extract_header(char* contents, char** name, char** value){
 	}
 }
 
+int validate_header(control_header *list, char* header_name, char* expected_value) {
+	char* header_value=NULL;
+	get_header_value(list, header_name, &header_value);
+	return !strcmp(expected_value,header_value);
+}
+
 // add a control header entry in the linked list
 // added as new head of the list
 control_header* control_headers_prepend(control_header* list, control_header* new) {
@@ -112,17 +130,6 @@ control_header* control_headers_prepend(control_header* list, control_header* ne
 		return new;
 	}
 
-}
-
-void control_header_value(control_header* list, char* needle, char** result) {
-	while (list!=NULL){
-		if(!strcmp(list->name,needle)){
-			*result=list->value;
-			return;
-		}
-		list=list->next;
-	}
-	result=NULL;
 }
 
 // free all memory allocated when we built the control_headers linked list
@@ -157,12 +164,14 @@ void store_control_header(char* contents, payload_specs *specs) {
 // callback discarding data
 static size_t discard_data(void *contents, size_t size, size_t nmemb, payload_specs *specs){
 
-	crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
 
 	// for headers only complete lines are passed
 	// if this is a control header, store it
 	if (specs->type == 'H' && strstr(contents,"X-NH-")!=NULL) {
 		store_control_header(contents,specs);
+	}
+	else {
+		crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
 	}
 	return size*nmemb;
 }
@@ -615,21 +624,20 @@ int main(int argc, char *argv[])
 				    }
 				    // end of validations in config file
 				    
-				    // validate headers and body hash 
+				    // compute headers and body hash 
 				    hash_final(&body_specs);
 				    hash_final(&headers_specs);
-				    printf("SPECS body sha : \n%s\n", body_specs.sha);
-				    printf("headers sha256 :\n*%s*\n", headers_specs.sha);
 
-				    char* body_h, *headers_h=NULL;
-				    control_header_value(headers_specs.control_headers, "X-NH-H-SHA256", &headers_h);
-				    if (!strcmp(headers_h, headers_specs.sha)){
-					    printf("SAME SHA, headers not modified!!\n");
-				    }
-				    else {
+				    char *headers_h;
+				    get_header_value(headers_specs.control_headers, "X-NH-H-SHA256", &headers_h);
+				    if (headers_specs.control_headers==NULL) {
+					    printf("HEADERS SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n");
+				    } 
+				    else if (!validate_header(headers_specs.control_headers, "X-NH-H-SHA256", headers_specs.sha)){
 					    printf("DIFFERENT SHA, headers modified!!\n");
+					    printf("transmitted headers hash: *%s*\n", headers_h);
+					    printf("headers sha256 :\n*%s*\n", headers_specs.sha);
 				    }
-				    printf("transmitted headers hash: *%s*\n", headers_h);
 
 
 				    /* cleanup after each query */ 
