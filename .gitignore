@@ -3,4 +3,6 @@
 *.test
 a.out
 README.pdf
-server/01_test
+client
+server
+raph
