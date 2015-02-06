@@ -1,0 +1,2 @@
+headers starting with X-NH- are not taken into account in the sha256 computation
+uses strlcpy

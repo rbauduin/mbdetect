@@ -1,4 +1,4 @@
-#include "mongoose.h"
+#include "utils/mongoose.h"
 #include "string.h"
 #include <time.h>
 #include <stdlib.h>
@@ -6,7 +6,7 @@
 
 // See http://cesanta.com/docs/Embed.shtml
 
-void init_headers(crypto_hash_sha256_state *state) {
+void begin_headers(crypto_hash_sha256_state *state) {
 	char first_line[]="HTTP/1.1 200 OK\r\n";
 	printf("%s", first_line);
 	crypto_hash_sha256_init(state);
@@ -33,7 +33,7 @@ void set_header(struct mg_connection *conn,crypto_hash_sha256_state *state, char
 }
 
 // had the chunked encoding header + the sha256 value as a last header
-void close_headers(struct mg_connection * conn,crypto_hash_sha256_state *state) {
+void end_hashed_headers(struct mg_connection * conn,crypto_hash_sha256_state *state) {
 	// the sha256 result
 	unsigned char out[crypto_hash_sha256_BYTES];
 	// string representation of the sha256
@@ -83,9 +83,9 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
 
 	crypto_hash_sha256_state state;
 
-	init_headers(&state);
+	begin_headers(&state);
 	set_header(conn, &state, "X-TeSt","WiTnEsS");
-	close_headers(conn,&state);
+	end_hashed_headers(conn,&state);
 	//mg_send_header(conn, "X-NH-TEST","test control header");
 	mg_send_header(conn,"X-NH-TEST","test control header");
 	mg_send_header(conn, "X-NH-RETEST","test control header");

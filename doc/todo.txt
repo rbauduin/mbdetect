@@ -1,0 +1,6 @@
+- compare actual to expected values, and control headers values
+- support non curl tests in config file
+- repeat tests with and without mptcp, with and without mptch checksum
+- collect data of the run on client and server
+- error handling
+- collect the payload_specs of the subsequent repetition of a query in a linked list

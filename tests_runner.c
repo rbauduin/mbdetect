@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <libconfig.h>
+#include "utils/mbd_utils.h"
 
 // libsodium for hash computation
 #include <sodium.h>
@@ -167,7 +168,7 @@ static size_t discard_data(void *contents, size_t size, size_t nmemb, payload_sp
 
 	// for headers only complete lines are passed
 	// if this is a control header, store it
-	if (specs->type == 'H' && strstr(contents,"X-NH-")!=NULL) {
+	if (specs->type == 'H' && is_control_header(contents)) {
 		store_control_header(contents,specs);
 	}
 	else {
@@ -183,7 +184,7 @@ write_in_file(void *contents, size_t size, size_t nmemb, payload_specs *specs)
   size_t realsize = size * nmemb, written;
   // for headers only complete lines are passed.
   // control headers are stored but not added to the hash value
-  if (specs->type == 'H' && strstr(contents,"X-NH-")!=NULL) {
+  if (specs->type == 'H' && is_control_header(contents)) {
 	  store_control_header(contents,specs);
 	  written = nmemb;
   }
@@ -629,11 +630,11 @@ int main(int argc, char *argv[])
 				    hash_final(&headers_specs);
 
 				    char *headers_h;
-				    get_header_value(headers_specs.control_headers, "X-NH-H-SHA256", &headers_h);
+				    get_header_value(headers_specs.control_headers, HEADERS_HASH_NAME, &headers_h);
 				    if (headers_specs.control_headers==NULL) {
 					    printf("HEADERS SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n");
 				    } 
-				    else if (!validate_header(headers_specs.control_headers, "X-NH-H-SHA256", headers_specs.sha)){
+				    else if (!validate_header(headers_specs.control_headers, HEADERS_HASH_NAME, headers_specs.sha)){
 					    printf("DIFFERENT SHA, headers modified!!\n");
 					    printf("transmitted headers hash: *%s*\n", headers_h);
 					    printf("headers sha256 :\n*%s*\n", headers_specs.sha);
