@@ -71,20 +71,24 @@ size_t add_content(char **acc, int buffer_size, crypto_hash_sha256_state *state,
   va_end(ap);
   // /1 : \0
   int new_size = strlen(*acc) + strlen(addition) + 1;
-  printf("new size = %d\n",new_size);
   if ( new_size > buffer_size) {
-	  // FIXME: I can't seem to grow the buffer by a multiple...
 	  //grow accumulator
+	  // if we grow, grow 4 times what's needed
+	  buffer_size=new_size*4;
 	  printf("realloc\n");
-	  *acc = (char *) realloc(*acc, new_size);
+	  printf("new size = %d\n",buffer_size);
+	  *acc = (char *) realloc(*acc, buffer_size);
 	  if (*acc==NULL) {
 		  return -1;
 	  }
   }
+  else {
+	  printf("no realloc\n");
+	  printf("buffer = %d and string size = %d \n",buffer_size, new_size);
+  }
   crypto_hash_sha256_update(state, addition, strlen(addition));
   strlcat(*acc,addition);
-  printf("new buffer size = %d\n",new_size);
-  return new_size;
+  return buffer_size;
 
   
 }
