@@ -22,6 +22,8 @@
 
 #include <stdio.h>      // required for FILE
 #include <stddef.h>     // required for size_t
+#include <sodium.h>
+#include <sys/stat.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -147,5 +149,9 @@ void mg_template(struct mg_connection *, const char *text,
 #ifdef __cplusplus
 }
 #endif // __cplusplus
+
+void mbd_file_endpoint(struct mg_connection *conn, crypto_hash_sha256_state *state, const char *path, struct stat *st, const char *extra_headers); 
+
+
 
 #endif // MONGOOSE_HEADER_INCLUDED

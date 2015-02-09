@@ -344,6 +344,9 @@ void set_options(CURL* curl, config_setting_t *test){
 	int mapping_found;
 	mapping m;
 
+	// set the options required for the code to work correctly
+	// do not include headers when printing the body
+	curl_easy_setopt(curl, CURLOPT_HEADER, 0L); 
 
 	// iterate over options
 	options = config_setting_get_member(test, "options");
@@ -636,7 +639,7 @@ int main(int argc, char *argv[])
 				    hash_final(&body_specs);
 				    hash_final(&headers_specs);
 
-				    // FIXME: clean this code, done at the end of a too long coding session...
+				    // FIXME: Maybe we can make this code more compact somehow
 				    int res = validate_header(headers_specs.control_headers, HEADERS_HASH_HEADER, headers_specs.sha);
 				    if (headers_specs.control_headers==NULL || res < 0 ) {
 					    printf("HEADERS SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n");

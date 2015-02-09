@@ -5,15 +5,10 @@
 #include <stdlib.h>
 #include <sodium.h>
 #include "utils/mbd_utils.h"
+#include <sys/stat.h>
 
-// See http://cesanta.com/docs/Embed.shtml
 
-void begin_headers(crypto_hash_sha256_state *state) {
-	char first_line[]="HTTP/1.1 200 OK\r\n";
-	printf("%s", first_line);
-	crypto_hash_sha256_init(state);
-	crypto_hash_sha256_update(state, first_line, strlen(first_line));
-}
+
 void set_header(struct mg_connection *conn,crypto_hash_sha256_state *state, char *name, char *value) {
 	char *header;
 	int header_len;
@@ -36,6 +31,13 @@ void set_header(struct mg_connection *conn,crypto_hash_sha256_state *state, char
 	}
 }
 
+
+
+void add_sha_headers_content(crypto_hash_sha256_state *state, char* content){
+	crypto_hash_sha256_update(state, content, strlen(content));
+}
+
+
 // had the chunked encoding header + the sha256 value as a last header
 void end_hashed_headers(struct mg_connection * conn,crypto_hash_sha256_state *state) {
 	// the sha256 result
@@ -43,16 +45,10 @@ void end_hashed_headers(struct mg_connection * conn,crypto_hash_sha256_state *st
 	// string representation of the sha256
 	char *sha;
 
-	// add the chunked encoding header set by mongoose
-	char last_line[]="Transfer-Encoding: chunked\r\n\r\n";
-	crypto_hash_sha256_update(state, last_line, strlen(last_line));
-
-
 	// finalise sha computation and send the header
 	crypto_hash_sha256_final(state, out);
 	sha=malloc(sizeof(out)*2+1);
 	sodium_bin2hex(sha, sizeof(out)*2+1, out, sizeof(out));
-	printf("%s",last_line);
 	printf("headers sha256 :\n%s\n", sha);
 
 	mg_send_header(conn, HEADERS_HASH_HEADER ,sha);
@@ -114,6 +110,26 @@ void send_content(struct mg_connection * conn,char *body) {
 	fclose(f);
 }
 
+void file_hash(char* path, char (*sha)[crypto_hash_sha256_BYTES*2+1]) {
+	FILE *f;
+	char buffer[1024];
+	size_t read;
+
+	f = fopen(path,"r");
+	crypto_hash_sha256_state sha_state;
+	crypto_hash_sha256_init(&sha_state);
+
+	while((read = fread(buffer, 1, sizeof(buffer), f)) > 0 ){
+		crypto_hash_sha256_update(&sha_state, buffer, read);
+	}
+	fclose(f);
+
+	unsigned char out[crypto_hash_sha256_BYTES];
+	crypto_hash_sha256_final(&sha_state, out);
+	sodium_bin2hex(*sha, sizeof(out)*2+1, out, sizeof(out));
+
+}
+
 int event_handler(struct mg_connection *conn, enum mg_event ev) {
   int i,random;
   // QUESTION what about doing it with pointer?
@@ -121,11 +137,32 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
   switch (ev) {
     case MG_AUTH: return MG_TRUE;
     case MG_REQUEST: 
+		  
+		  
+	printf("start\n");
+	// sha state for headers and body
+	crypto_hash_sha256_state state, body_state;
+
+	// we immediately initialise the body state
+	crypto_hash_sha256_init(&body_state);
+	crypto_hash_sha256_init(&state);
+		  
+		  
+		  
 	// needs to be in the switch statement, or segfaults
         // do not process requests for /cumulus.jpg, let the standard handler do it
         // hence serving file from filesystem
-        if (!strcmp(conn->uri, "/cumulus.jpg")) {
-        	return MG_FALSE;
+        if (!strcmp(conn->uri, "/files/cumulus.jpg")) {
+		char sha[crypto_hash_sha256_BYTES*2+1];
+		file_hash("files/cumulus.jpg", &sha);
+		printf("computed body sha = %s\n", sha);
+		set_header(conn, &state, BODY_HASH_HEADER, sha);
+		struct stat st;
+		const int exists = stat("files/cumulus.jpg", &st) == 0;
+		mbd_file_endpoint(conn, &state, "files/cumulus.jpg", &st, NULL);
+		//mg_send_file(conn, "files/cumulus.jpg", NULL);	
+
+        	return MG_MORE;
         }
 	// If path starts with /files, serve file on disk
         if (!strncmp(conn->uri, "/files", 6)) {
@@ -142,11 +179,6 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
         	return MG_FALSE;
         }
 
-	// sha state for headers and body
-	crypto_hash_sha256_state state, body_state;
-
-	// we immediately initialise the body state. For the headers, it's done in begin_headers
-	crypto_hash_sha256_init(&body_state);
 	// initialises a body of length 4096
 	//  will be expanded if needed in add_content
 	char *body;
@@ -154,8 +186,11 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
 	memset(body,0,4096);
 	int buffer_size = 4096;
 
-	begin_headers(&state);
+	// line added by mongoose. We might as wel look at a way to set it outself
+	add_sha_headers_content(&state,"HTTP/1.1 200 OK\r\n");
 	set_header(conn, &state, "X-TeSt","WiTnEsS");
+	// add the chunked encoding header set by mongoose
+	add_sha_headers_content(&state, "Transfer-Encoding: chunked\r\n\r\n");
 	end_hashed_headers(conn,&state);
 
 	set_header(conn, &state, "X-NH-TEST","test control header");
@@ -166,14 +201,11 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
 	//printf("---Start of headers---\n");
         for (i = 0; i < conn->num_headers; i++){
 	    buffer_size = add_content(&body, buffer_size, &body_state,  "%s : %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
-            //printf("%s : %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
 	}
 	//printf("---End of headers---\n");
 	buffer_size = add_content(&body, buffer_size, &body_state, "%s\n",  conn->remote_ip);
 	buffer_size = add_content(&body, buffer_size, &body_state, "%d\n", conn->remote_port);
-        //printf("POST length: %zd\n", conn->content_len);
 	buffer_size = add_content(&body, buffer_size, &body_state, "%zd\n", conn->content_len);
-	//printf("POST data : %s\n" , strndup(conn->content, conn->content_len));
 	buffer_size = add_content(&body, buffer_size, &body_state, "POST data : %s\n", strndup(conn->content, conn->content_len));
 	buffer_size = add_content(&body, buffer_size, &body_state, "%s\n", "Bye hehe!");
 

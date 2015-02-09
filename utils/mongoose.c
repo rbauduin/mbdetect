@@ -74,6 +74,7 @@
 #include <string.h>
 #include <time.h>
 #include <signal.h>
+#include <sodium.h>
 
 #ifdef _WIN32
 #ifdef _MSC_VER
@@ -5284,4 +5285,78 @@ struct mg_server *mg_create_server(void *server_data, mg_handler_t handler) {
   set_default_option_values(server->config_options);
   server->event_handler = handler;
   return server;
+}
+
+// modified version of open_file_endpoint to include headers in hash
+// - takes a mg_conn as first argument, original too struct connection.
+// - added the sha state argument
+void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *state, const char *path, file_stat_t *st, const char *extra_headers) {
+  char date[64], lm[64], etag[64], range[64], headers[1000];
+  const char *msg = "OK", *hdr;
+  time_t curtime = time(NULL);
+  int64_t r1, r2;
+  struct vec mime_vec;
+  int n;
+
+  //ADDED
+  struct connection *conn = MG_CONN_2_CONN(mg_conn);
+
+  // ADDED
+  conn->endpoint.fd = open(path, O_RDONLY | O_BINARY, 0);
+
+  conn->endpoint_type = EP_FILE;
+  ns_set_close_on_exec(conn->endpoint.fd);
+  conn->mg_conn.status_code = 200;
+
+  get_mime_type(conn->server, path, &mime_vec);
+  conn->cl = st->st_size;
+  range[0] = '\0';
+
+  // If Range: header specified, act accordingly
+  r1 = r2 = 0;
+  hdr = mg_get_header(&conn->mg_conn, "Range");
+  if (hdr != NULL && (n = parse_range_header(hdr, &r1, &r2)) > 0 &&
+      r1 >= 0 && r2 >= 0) {
+    conn->mg_conn.status_code = 206;
+    conn->cl = n == 2 ? (r2 > conn->cl ? conn->cl : r2) - r1 + 1: conn->cl - r1;
+    mg_snprintf(range, sizeof(range), "Content-Range: bytes "
+                "%" INT64_FMT "-%" INT64_FMT "/%" INT64_FMT "\r\n",
+                r1, r1 + conn->cl - 1, (int64_t) st->st_size);
+    msg = "Partial Content";
+    lseek(conn->endpoint.fd, r1, SEEK_SET);
+  }
+
+  // Prepare Etag, Date, Last-Modified headers. Must be in UTC, according to
+  // http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.3
+  gmt_time_string(date, sizeof(date), &curtime);
+  gmt_time_string(lm, sizeof(lm), &st->st_mtime);
+  construct_etag(etag, sizeof(etag), st);
+
+  n = mg_snprintf(headers, sizeof(headers),
+                  "HTTP/1.1 %d %s\r\n"
+                  "Date: %s\r\n"
+                  "Last-Modified: %s\r\n"
+                  "Etag: %s\r\n"
+                  "Content-Type: %.*s\r\n"
+                  "Content-Length: %" INT64_FMT "\r\n"
+                  "Connection: %s\r\n"
+                  "Accept-Ranges: bytes\r\n"
+                  "%s%s%s\r\n",
+                  conn->mg_conn.status_code, msg, date, lm, etag,
+                  (int) mime_vec.len, mime_vec.ptr, conn->cl,
+                  suggest_connection_header(&conn->mg_conn),
+                  range, extra_headers == NULL ? "" : extra_headers,
+                  MONGOOSE_USE_EXTRA_HTTP_HEADERS);
+  // add headers to HASH
+  crypto_hash_sha256_update(state, headers, n);
+  add_sha_headers_content(state, headers);
+  end_hashed_headers(mg_conn, state);
+
+  ns_send(conn->ns_conn, headers, n);
+
+  if (!strcmp(conn->mg_conn.request_method, "HEAD")) {
+    conn->ns_conn->flags |= NSF_FINISHED_SENDING_DATA;
+    close(conn->endpoint.fd);
+    conn->endpoint_type = EP_NONE;
+  }
 }
