@@ -55,7 +55,7 @@ void end_hashed_headers(struct mg_connection * conn,crypto_hash_sha256_state *st
 	printf("%s",last_line);
 	printf("headers sha256 :\n%s\n", sha);
 
-	mg_send_header(conn, "X-NH-H-SHA256",sha);
+	mg_send_header(conn, HEADERS_HASH_HEADER ,sha);
 	free(sha);
 }
 // heavily inspired my from mongoose mg_printf_data
@@ -69,30 +69,50 @@ size_t add_content(char **acc, int buffer_size, crypto_hash_sha256_state *state,
   va_start(ap, fmt);
   len = ns_avprintf(&addition, strlen(addition), fmt, ap);
   va_end(ap);
-  // /1 : \0
+  //check if new string fits in buffer
+  // +1 : \0
   int new_size = strlen(*acc) + strlen(addition) + 1;
   if ( new_size > buffer_size) {
-	  //grow accumulator
 	  // if we grow, grow 4 times what's needed
 	  buffer_size=new_size*4;
-	  printf("realloc\n");
-	  printf("new size = %d\n",buffer_size);
 	  *acc = (char *) realloc(*acc, buffer_size);
 	  if (*acc==NULL) {
 		  return -1;
 	  }
   }
-  else {
-	  printf("no realloc\n");
-	  printf("buffer = %d and string size = %d \n",buffer_size, new_size);
-  }
-  crypto_hash_sha256_update(state, addition, strlen(addition));
+  // append content to the accumulator
   strlcat(*acc,addition);
+  // update body hash
+  crypto_hash_sha256_update(state, addition, strlen(addition));
   return buffer_size;
-
-  
 }
 
+// compute the body hash and send it in a header
+void end_content(struct mg_connection * conn,crypto_hash_sha256_state *state) {
+	// the sha256 result
+	unsigned char out[crypto_hash_sha256_BYTES];
+	// string representation of the sha256
+	char *sha;
+
+	// finalise sha computation and send the header
+	crypto_hash_sha256_final(state, out);
+	sha=malloc(sizeof(out)*2+1);
+	sodium_bin2hex(sha, sizeof(out)*2+1, out, sizeof(out));
+
+	mg_send_header(conn, BODY_HASH_HEADER,sha);
+	printf("body sha : %s\n", sha);
+	free(sha);
+}
+
+// send content, and write it to a local file.
+// Will be improved later to save data per experiment
+void send_content(struct mg_connection * conn,char *body) {
+    	mg_printf_data(conn, "%s", body);
+	FILE* f=fopen("/tmp/body","w");
+	printf("size of body : %d\n",(int)strlen(body));
+	fwrite(body,strlen(body),1,f);
+	fclose(f);
+}
 
 int event_handler(struct mg_connection *conn, enum mg_event ev) {
   int i,random;
@@ -122,64 +142,52 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
         	return MG_FALSE;
         }
 
-	crypto_hash_sha256_state state;
-	crypto_hash_sha256_state body_state;
+	// sha state for headers and body
+	crypto_hash_sha256_state state, body_state;
+
+	// we immediately initialise the body state. For the headers, it's done in begin_headers
 	crypto_hash_sha256_init(&body_state);
-	//// initialises a body of length 4096
+	// initialises a body of length 4096
+	//  will be expanded if needed in add_content
 	char *body;
-	body = (char *) malloc(3);
-	memset(body,0,3);
-	int buffer_size = 3;
+	body = (char *) malloc(4096);
+	memset(body,0,4096);
+	int buffer_size = 4096;
 
 	begin_headers(&state);
 	set_header(conn, &state, "X-TeSt","WiTnEsS");
 	end_hashed_headers(conn,&state);
-	mg_send_header(conn, "X-NH-TEST","test control header");
 
 	set_header(conn, &state, "X-NH-TEST","test control header");
 	set_header(conn, &state, "X-NH-RETEST","test control header");
 
-    	//mg_printf_data(conn, "%s\n", "Welcome hehe!");
 	buffer_size = add_content(&body, buffer_size, &body_state, "%s\n", "Welcome hehe!");
-	//mg_printf_data(conn, "%s\n", mg_get_header(conn, "Host"));
 	buffer_size = add_content(&body, buffer_size, &body_state, "%s\n", mg_get_header(conn, "Host"));
 	//printf("---Start of headers---\n");
         for (i = 0; i < conn->num_headers; i++){
-            //mg_printf_data(conn, "%s : %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
 	    buffer_size = add_content(&body, buffer_size, &body_state,  "%s : %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
             //printf("%s : %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
 	}
 	//printf("---End of headers---\n");
-        //mg_printf_data(conn, "client ip : %s\n", conn->remote_ip);
 	buffer_size = add_content(&body, buffer_size, &body_state, "%s\n",  conn->remote_ip);
-        //mg_printf_data(conn, "client port : %d\n", conn->remote_port);
 	buffer_size = add_content(&body, buffer_size, &body_state, "%d\n", conn->remote_port);
         //printf("POST length: %zd\n", conn->content_len);
-        //mg_printf_data(conn, "POST length: %zd\n", conn->content_len);
 	buffer_size = add_content(&body, buffer_size, &body_state, "%zd\n", conn->content_len);
 	//printf("POST data : %s\n" , strndup(conn->content, conn->content_len));
-	//mg_printf_data(conn, "POST data : %s\n" , strndup(conn->content, conn->content_len));
-	buffer_size = add_content(&body, buffer_size, &body_state, "%s\n", strndup(conn->content, conn->content_len));
-    	//mg_printf_data(conn, "%s\n", "Bye hehe!");
-	buffer_size = add_content(&body, buffer_size, &body_state, "%s", "Bye hehe!");
+	buffer_size = add_content(&body, buffer_size, &body_state, "POST data : %s\n", strndup(conn->content, conn->content_len));
+	buffer_size = add_content(&body, buffer_size, &body_state, "%s\n", "Bye hehe!");
+
+	end_content(conn, &body_state);
 	
-    	mg_printf_data(conn, "%s\n", body);
+	send_content(conn, body);
 	free(body);
-	return MG_TRUE;
-
-
-	//unsigned char out[crypto_hash_sha256_BYTES];
-	//char *sha;
-	//crypto_hash_sha256_final(&body_state, out);
-	//sha=malloc(sizeof(out)*2+1);
-	//sodium_bin2hex(sha, sizeof(out)*2+1, out, sizeof(out));
-	//printf("body sha256 :\n%s\n", sha);
 
 
 
 
 
-	//free(body);
+
+
 	return MG_TRUE;
     default: return MG_FALSE;
   }

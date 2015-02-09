@@ -16,7 +16,8 @@ typedef struct {
 } mapping;
 mapping mappings[] =  {
 	{"CURLOPT_URL", CURLOPT_URL, "str"}
-	,{"CURLOPT_HEADER", CURLOPT_HEADER, "long"}
+// We don not support CURLOPT_HEADER, as it interferes with body sha256 computation
+//	,{"CURLOPT_HEADER", CURLOPT_HEADER, "long"}
 	,{"CURLOPT_FOLLOWLOCATION", CURLOPT_FOLLOWLOCATION, "long"}
 	,{"CURLOPT_POST", CURLOPT_POST, "long"}
 	,{"CURLOPT_POSTFIELDSIZE", CURLOPT_POSTFIELDSIZE, "long"}
@@ -290,8 +291,8 @@ int find_mapping(const char* option, mapping* m) {
 		return 0;
 	}
 	else {
-		error("Options %s not handled by this code\n", option);
-		return 1;
+		printf("Options %s not handled by this code\n", option);
+		return -1;
 	}
 
 }
@@ -306,7 +307,7 @@ int find_code(const char* option) {
 		return mappings[i].code;
 	}
 	else {
-		printf("Options %s not handled by this code\n", option);
+		error("Options %s not handled by this code\n", option);
 		return -1;
 	}
 
@@ -635,17 +636,29 @@ int main(int argc, char *argv[])
 				    hash_final(&body_specs);
 				    hash_final(&headers_specs);
 
-				    char *headers_h;
-				    get_header_value(headers_specs.control_headers, HEADERS_HASH_NAME, &headers_h);
 				    // FIXME: clean this code, done at the end of a too long coding session...
-				    int res = validate_header(headers_specs.control_headers, HEADERS_HASH_NAME, headers_specs.sha);
+				    int res = validate_header(headers_specs.control_headers, HEADERS_HASH_HEADER, headers_specs.sha);
 				    if (headers_specs.control_headers==NULL || res < 0 ) {
 					    printf("HEADERS SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n");
 				    } 
 				    else if (!res) {
+					    char *headers_h;
+					    get_header_value(headers_specs.control_headers, HEADERS_HASH_HEADER, &headers_h);
 					    printf("DIFFERENT SHA, headers modified!!\n");
 					    printf("transmitted headers hash: *%s*\n", headers_h);
 					    printf("headers sha256 :\n*%s*\n", headers_specs.sha);
+				    }
+
+				    res = validate_header(headers_specs.control_headers, BODY_HASH_HEADER, body_specs.sha);
+				    if (headers_specs.control_headers==NULL || res < 0 ) {
+					    printf("HEADERS SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n");
+				    } 
+				    else if (!res) {
+					    char *headers_h;
+					    get_header_value(headers_specs.control_headers, HEADERS_HASH_HEADER, &headers_h);
+					    printf("DIFFERENT SHA, BODY modified!!\n");
+					    printf("transmitted body hash: *%s*\n", headers_h);
+					    printf("body sha256 :\n*%s*\n", body_specs.sha);
 				    }
 
 
