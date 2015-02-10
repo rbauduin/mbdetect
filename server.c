@@ -16,7 +16,7 @@ void set_header(struct mg_connection *conn,crypto_hash_sha256_state *state, char
 	mg_send_header(conn, name,value);
 
 	// if this is not a control header, add it to the headers hash computation
-	if (! is_control_header(name)) {
+	if (! is_headers_hash_control_header(name)) {
 		// +2 : ": "
 		// +2 : \r\n
 		header_len = strlen(name)+strlen(value)+2+2;
@@ -26,15 +26,18 @@ void set_header(struct mg_connection *conn,crypto_hash_sha256_state *state, char
 		strcat(header,": ");
 		strcat(header,value);
 		strcat(header,"\r\n");
+		printf("HASHING HEADER %s\n", header);
 		crypto_hash_sha256_update(state, header, header_len);
-		printf("HEADER IN HASH :: %s", header);
 		free(header);
 	}
+	else
+		printf("NOT hashing HEADER %s\n", header);
 }
 
 
 
 void add_sha_headers_content(crypto_hash_sha256_state *state, char* content){
+	printf("hasing in headers %s\n", (char *) content);
 	crypto_hash_sha256_update(state, content, strlen(content));
 }
 
@@ -56,7 +59,8 @@ void end_hashed_headers(struct mg_connection *conn, crypto_hash_sha256_state *st
 	sha_from_state(state,&sha);
 
 	// mg_send_headers blocked in mbd_file_endpoint, dunno why.
-	mg_printf(conn, HEADERS_HASH_HEADER ,sha);
+	printf("Sending hash header\n");
+	mg_send_header(conn, HEADERS_HASH_HEADER ,sha);
 }
 // heavily inspired my from mongoose mg_printf_data
 
@@ -88,18 +92,18 @@ size_t add_content(char **acc, int buffer_size, crypto_hash_sha256_state *state,
 }
 
 // compute the body hash and send it in a header
-void end_content(struct mg_connection * conn,crypto_hash_sha256_state *state) {
+void end_content(struct mg_connection * conn,crypto_hash_sha256_state *body_state, crypto_hash_sha256_state *headers_state) {
 	// the sha256 result
 	unsigned char out[crypto_hash_sha256_BYTES];
 	// string representation of the sha256
 	char *sha;
 
 	// finalise sha computation and send the header
-	crypto_hash_sha256_final(state, out);
+	crypto_hash_sha256_final(body_state, out);
 	sha=malloc(sizeof(out)*2+1);
 	sodium_bin2hex(sha, sizeof(out)*2+1, out, sizeof(out));
 
-	mg_send_header(conn, BODY_HASH_HEADER,sha);
+	set_header(conn, headers_state, BODY_HASH_HEADER,sha);
 	printf("body sha : %s\n", sha);
 	free(sha);
 }
@@ -143,7 +147,7 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
     case MG_REQUEST: 
 		  
 		  
-	printf("start\n");
+	printf("start %s\n", conn->uri);
 	// sha state for headers and body
 	crypto_hash_sha256_state state, body_state;
 
@@ -158,21 +162,7 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
         // hence serving file from filesystem
         if (!strcmp(conn->uri, "/files/cumulus.jpg")) {
 		// +20 : header name + ": " + some reserve, in case we change the name
-		char sha[crypto_hash_sha256_BYTES*2+1];
-		file_hash("files/cumulus.jpg", &sha);
-		char body_hash_header[crypto_hash_sha256_BYTES*2+1+20];
-		int n = mg_snprintf(body_hash_header, sizeof(body_hash_header),
-				"X-NH-D-SHA256: %s",
-				sha);
-		printf("computed body sha = %s\n", sha);
-		struct stat st;
-		const int exists = stat("files/cumulus.jpg", &st) == 0;
-   // conn->status_code = 200;
-   //mg_printf(conn, "HTTP/1.0 %d %s\r\n", 200, "OK");
-		//set_header(conn, &state, BODY_HASH_HEADER, sha);
-		mbd_file_endpoint(conn, &state, "files/cumulus.jpg", &st, body_hash_header);
-		//mg_send_file(conn, "files/cumulus.jpg", NULL);	
-
+		mbd_deliver_file(conn, "/files/cumulus.jpg", &state );
         	return MG_MORE;
         }
 	// If path starts with /files, serve file on disk
@@ -183,7 +173,7 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
 	// requests to /random.jpg return a random image
         if (!strcmp(conn->uri, "/random.jpg")) {
 		random=rand()%10;
-		sprintf(new_uri,"/cumulus_%d.jpg", random);
+		sprintf(new_uri,"/files/cumulus_%d.jpg", random);
 		printf("%s\n",new_uri);
 		conn->uri=new_uri;
 		printf("will return %s for client on port %d\n", conn->uri, conn->remote_port);
@@ -200,9 +190,6 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
 	// line added by mongoose. We might as wel look at a way to set it outself
 	add_sha_headers_content(&state,"HTTP/1.1 200 OK\r\n");
 	set_header(conn, &state, "X-TeSt","WiTnEsS");
-	// add the chunked encoding header set by mongoose
-	add_sha_headers_content(&state, "Transfer-Encoding: chunked\r\n\r\n");
-	end_hashed_headers(conn,&state);
 
 	set_header(conn, &state, "X-NH-TEST","test control header");
 	set_header(conn, &state, "X-NH-RETEST","test control header");
@@ -220,7 +207,10 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
 	buffer_size = add_content(&body, buffer_size, &body_state, "POST data : %s\n", strndup(conn->content, conn->content_len));
 	buffer_size = add_content(&body, buffer_size, &body_state, "%s\n", "Bye hehe!");
 
-	end_content(conn, &body_state);
+	end_content(conn, &body_state, &state);
+	// add the chunked encoding header set by mongoose
+	add_sha_headers_content(&state, "Transfer-Encoding: chunked\r\n");
+	end_hashed_headers(conn,&state);
 	
 	send_content(conn, body);
 	free(body);

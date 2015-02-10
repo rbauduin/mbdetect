@@ -75,6 +75,7 @@
 #include <time.h>
 #include <signal.h>
 #include <sodium.h>
+#include "mbd_utils.h"
 
 #ifdef _WIN32
 #ifdef _MSC_VER
@@ -5290,7 +5291,7 @@ struct mg_server *mg_create_server(void *server_data, mg_handler_t handler) {
 // modified version of open_file_endpoint to include headers in hash
 // - takes a mg_conn as first argument, original too struct connection.
 // - added the sha state argument
-void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *state, const char *file_name, file_stat_t *st, const char *extra_headers) {
+void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *state, const char *file_name, struct stat *st, const char *extra_headers) {
   char date[64], lm[64], etag[64], range[64], headers[1000];
   const char *msg = "OK", *hdr;
   time_t curtime = time(NULL);
@@ -5301,8 +5302,8 @@ void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *
   mg_snprintf(path, sizeof(path), "%s", file_name);
 
   //ADDED
-  mg_conn->status_code=200;
   struct connection *conn = MG_CONN_2_CONN(mg_conn);
+//  mg_conn->status_code=200;
 
 
   // ADDED
@@ -5335,7 +5336,6 @@ void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *
   gmt_time_string(date, sizeof(date), &curtime);
   gmt_time_string(lm, sizeof(lm), &st->st_mtime);
   construct_etag(etag, sizeof(etag), st);
-  printf("Extra headers are : %s\n", extra_headers);
 
   n = snprintf(headers, sizeof(headers),
                   "HTTP/1.1 %d %s\r\n"
@@ -5357,11 +5357,11 @@ void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *
                   suggest_connection_header(&conn->mg_conn),
 		  extra_headers);
   // add headers to HASH
-  printf("---\nHEaders on sha computed are:\n%s-----\n", headers);
-  FILE *f;
-  f=fopen("/tmp/h","w");
-  fwrite(headers,strlen(headers),1,f);
-  fclose(f);
+  //printf("---\nHEaders on sha computed are:\n%s-----\n", headers);
+  //FILE *f;
+  //f=fopen("/tmp/h","w");
+  //fwrite(headers,strlen(headers),1,f);
+  //fclose(f);
   crypto_hash_sha256_update(state, headers, strlen(headers));
 
   char sha[crypto_hash_sha256_BYTES*2+1];
@@ -5376,13 +5376,34 @@ void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *
 		  sha 
 		  );
 
-  printf("****\nFinal headers are:\n%s****", headers);
-  mg_printf(mg_conn, headers);
-  //ns_send(conn->ns_conn, headers, n);
+  //printf("****\nFinal headers are:\n%s****", headers);
+  //mg_printf(mg_conn, headers);
+  ns_send(conn->ns_conn, headers, n);
 
   if (!strcmp(conn->mg_conn.request_method, "HEAD")) {
     conn->ns_conn->flags |= NSF_FINISHED_SENDING_DATA;
     close(conn->endpoint.fd);
     conn->endpoint_type = EP_NONE;
   }
+}
+
+int mbd_deliver_file(struct mg_connection *mg_conn, char* uri, crypto_hash_sha256_state* state) {
+	char path[MAX_PATH_SIZE];
+	strlcpy(path,uri,strlen(uri));
+	struct stat st;
+	//const int exists = stat(path, &st) == 0;
+	struct connection *conn = MG_CONN_2_CONN(mg_conn);
+	const int exists = convert_uri_to_file_name(conn, path, sizeof(path), &st);
+	char sha[crypto_hash_sha256_BYTES*2+1];
+	file_hash(path, &sha);
+	char body_hash_header[crypto_hash_sha256_BYTES*2+1+20];
+	int n = mg_snprintf(body_hash_header, sizeof(body_hash_header),
+			BODY_HASH_HEADER ": %s",
+			sha);
+	if (stat(path, &st) != 0) {
+		send_http_error(conn, 404, NULL);
+	}
+	else {
+		mbd_file_endpoint(mg_conn, state, path, &st, body_hash_header);
+	}
 }

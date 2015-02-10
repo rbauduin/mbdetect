@@ -6,7 +6,7 @@ client: client.o
 server.o: server.c utils/mbd_utils.c utils/mbd_utils.h utils/mongoose.c utils/mbd_utils.h utils/mongoose.h
 	cc -ggdb -c server.c utils/mongoose.c utils/strlcpy.c utils/strlcat.c utils/mbd_utils.c
 server: server.o
-	gcc -o server server.o mongoose.o mbd_utils.o strlcat.o -pthread -lsodium
+	gcc -o server server.o mongoose.o mbd_utils.o strlcat.o strlcpy.o -pthread -lsodium
 test: client
 	./client tests/curl_tests.cfg
 clean: 
