@@ -6,6 +6,7 @@
 #include <sodium.h>
 #include "utils/mbd_utils.h"
 #include <sys/stat.h>
+#include "utils/mongoose.h"
 
 
 
@@ -38,21 +39,24 @@ void add_sha_headers_content(crypto_hash_sha256_state *state, char* content){
 }
 
 
-// had the chunked encoding header + the sha256 value as a last header
-void end_hashed_headers(struct mg_connection * conn,crypto_hash_sha256_state *state) {
+void sha_from_state(crypto_hash_sha256_state *state, char(* sha)[crypto_hash_sha256_BYTES*2+1]) {
 	// the sha256 result
 	unsigned char out[crypto_hash_sha256_BYTES];
+	crypto_hash_sha256_final(state, out);
+	sodium_bin2hex(*sha, sizeof(out)*2+1, out, sizeof(out));
+}
+
+
+// had the chunked encoding header + the sha256 value as a last header
+void end_hashed_headers(struct mg_connection *conn, crypto_hash_sha256_state *state) {
 	// string representation of the sha256
-	char *sha;
+	char sha[crypto_hash_sha256_BYTES*2+1];
 
 	// finalise sha computation and send the header
-	crypto_hash_sha256_final(state, out);
-	sha=malloc(sizeof(out)*2+1);
-	sodium_bin2hex(sha, sizeof(out)*2+1, out, sizeof(out));
-	printf("headers sha256 :\n%s\n", sha);
+	sha_from_state(state,&sha);
 
-	mg_send_header(conn, HEADERS_HASH_HEADER ,sha);
-	free(sha);
+	// mg_send_headers blocked in mbd_file_endpoint, dunno why.
+	mg_printf(conn, HEADERS_HASH_HEADER ,sha);
 }
 // heavily inspired my from mongoose mg_printf_data
 
@@ -153,13 +157,20 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
         // do not process requests for /cumulus.jpg, let the standard handler do it
         // hence serving file from filesystem
         if (!strcmp(conn->uri, "/files/cumulus.jpg")) {
+		// +20 : header name + ": " + some reserve, in case we change the name
 		char sha[crypto_hash_sha256_BYTES*2+1];
 		file_hash("files/cumulus.jpg", &sha);
+		char body_hash_header[crypto_hash_sha256_BYTES*2+1+20];
+		int n = mg_snprintf(body_hash_header, sizeof(body_hash_header),
+				"X-NH-D-SHA256: %s",
+				sha);
 		printf("computed body sha = %s\n", sha);
-		set_header(conn, &state, BODY_HASH_HEADER, sha);
 		struct stat st;
 		const int exists = stat("files/cumulus.jpg", &st) == 0;
-		mbd_file_endpoint(conn, &state, "files/cumulus.jpg", &st, NULL);
+   // conn->status_code = 200;
+   //mg_printf(conn, "HTTP/1.0 %d %s\r\n", 200, "OK");
+		//set_header(conn, &state, BODY_HASH_HEADER, sha);
+		mbd_file_endpoint(conn, &state, "files/cumulus.jpg", &st, body_hash_header);
 		//mg_send_file(conn, "files/cumulus.jpg", NULL);	
 
         	return MG_MORE;

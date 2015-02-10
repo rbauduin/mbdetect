@@ -1661,7 +1661,7 @@ static int mg_vsnprintf(char *buf, size_t buflen, const char *fmt, va_list ap) {
   return n;
 }
 
-static int mg_snprintf(char *buf, size_t buflen, const char *fmt, ...) {
+int mg_snprintf(char *buf, size_t buflen, const char *fmt, ...) {
   va_list ap;
   int n;
   va_start(ap, fmt);
@@ -5290,16 +5290,20 @@ struct mg_server *mg_create_server(void *server_data, mg_handler_t handler) {
 // modified version of open_file_endpoint to include headers in hash
 // - takes a mg_conn as first argument, original too struct connection.
 // - added the sha state argument
-void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *state, const char *path, file_stat_t *st, const char *extra_headers) {
+void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *state, const char *file_name, file_stat_t *st, const char *extra_headers) {
   char date[64], lm[64], etag[64], range[64], headers[1000];
   const char *msg = "OK", *hdr;
   time_t curtime = time(NULL);
   int64_t r1, r2;
   struct vec mime_vec;
   int n;
+  char path[MAX_PATH_SIZE];
+  mg_snprintf(path, sizeof(path), "%s", file_name);
 
   //ADDED
+  mg_conn->status_code=200;
   struct connection *conn = MG_CONN_2_CONN(mg_conn);
+
 
   // ADDED
   conn->endpoint.fd = open(path, O_RDONLY | O_BINARY, 0);
@@ -5331,8 +5335,9 @@ void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *
   gmt_time_string(date, sizeof(date), &curtime);
   gmt_time_string(lm, sizeof(lm), &st->st_mtime);
   construct_etag(etag, sizeof(etag), st);
+  printf("Extra headers are : %s\n", extra_headers);
 
-  n = mg_snprintf(headers, sizeof(headers),
+  n = snprintf(headers, sizeof(headers),
                   "HTTP/1.1 %d %s\r\n"
                   "Date: %s\r\n"
                   "Last-Modified: %s\r\n"
@@ -5341,18 +5346,39 @@ void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *
                   "Content-Length: %" INT64_FMT "\r\n"
                   "Connection: %s\r\n"
                   "Accept-Ranges: bytes\r\n"
-                  "%s%s%s\r\n",
-                  conn->mg_conn.status_code, msg, date, lm, etag,
-                  (int) mime_vec.len, mime_vec.ptr, conn->cl,
+		  "%s\r\n"
+		  ,
+                  conn->mg_conn.status_code, msg,
+		  date,
+		  lm,
+		  etag,
+                  (int) mime_vec.len, mime_vec.ptr,
+		  conn->cl,
                   suggest_connection_header(&conn->mg_conn),
-                  range, extra_headers == NULL ? "" : extra_headers,
-                  MONGOOSE_USE_EXTRA_HTTP_HEADERS);
+		  extra_headers);
   // add headers to HASH
-  crypto_hash_sha256_update(state, headers, n);
-  add_sha_headers_content(state, headers);
-  end_hashed_headers(mg_conn, state);
+  printf("---\nHEaders on sha computed are:\n%s-----\n", headers);
+  FILE *f;
+  f=fopen("/tmp/h","w");
+  fwrite(headers,strlen(headers),1,f);
+  fclose(f);
+  crypto_hash_sha256_update(state, headers, strlen(headers));
 
-  ns_send(conn->ns_conn, headers, n);
+  char sha[crypto_hash_sha256_BYTES*2+1];
+  sha_from_state(state,sha);
+  char base_headers[1000];
+  strcpy(base_headers,headers);
+  n = mg_snprintf(headers, sizeof(headers),
+		  "%s"
+		  "X-NH-H-SHA256: %s\r\n"
+		  "\r\n",
+		  base_headers,
+		  sha 
+		  );
+
+  printf("****\nFinal headers are:\n%s****", headers);
+  mg_printf(mg_conn, headers);
+  //ns_send(conn->ns_conn, headers, n);
 
   if (!strcmp(conn->mg_conn.request_method, "HEAD")) {
     conn->ns_conn->flags |= NSF_FINISHED_SENDING_DATA;

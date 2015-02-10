@@ -140,13 +140,20 @@ control_header* control_headers_prepend(control_header* list, control_header* ne
 
 }
 
+int free_control_header(control_header *header) {
+		if (header->name!=NULL)
+			free(header->name);
+		if (header->value!=NULL)
+			free(header->value);
+		return 0;
+}
+
 // free all memory allocated when we built the control_headers linked list
 int control_headers_free(control_header* list) {
 	int i=0;
 	control_header* previous_head;
 	while (list!=NULL) {
-		free(list->name);
-		free(list->value);
+		free_control_header(list);
 		previous_head = list;
 		list = list->next;
 		free(previous_head);
@@ -166,7 +173,15 @@ void store_control_header(char* contents, payload_specs *specs) {
 	extract_header(contents, &(header->name), &(header->value));
 
 	// add it to the linked list
-	specs->control_headers = control_headers_prepend(specs->control_headers, header);
+	if (strcmp(header->name, "")) {
+			specs->control_headers = control_headers_prepend(specs->control_headers, header);
+	}
+	else
+	{
+		free_control_header(header);
+		free(header);
+	}
+
 
 }
 // callback discarding data
@@ -189,17 +204,30 @@ static size_t
 write_in_file(void *contents, size_t size, size_t nmemb, payload_specs *specs)
 {
   size_t realsize = size * nmemb, written;
+
   // for headers only complete lines are passed.
-  // control headers are stored but not added to the hash value
-  if (specs->type == 'H' && is_control_header(contents)) {
-	  store_control_header(contents,specs);
-	  written = nmemb;
+  // control headers are stored and added to the hash value
+  if (specs->type == 'H') {
+	  if (! is_empty_line(contents)) {
+		  if (!is_empty_line(contents)){
+			  if (is_http_status_header(contents)) {
+				  crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
+			  }
+			  else {
+				  store_control_header(contents,specs);
+				  if (!is_headers_hash_control_header(contents)) {
+					  crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
+				  }
+			  }
+		  }
+	  }
+
+
   }
-  else {
-	// currently we do not write the header in the output file either.
-	written = fwrite(contents, size, nmemb, specs->fd);
-	crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
+  else{
+	  crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
   }
+  written = fwrite(contents, size, nmemb, specs->fd);
   return written*size;
 }
 //------------------------------------
@@ -654,7 +682,7 @@ int main(int argc, char *argv[])
 
 				    res = validate_header(headers_specs.control_headers, BODY_HASH_HEADER, body_specs.sha);
 				    if (headers_specs.control_headers==NULL || res < 0 ) {
-					    printf("HEADERS SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n");
+					    printf("BODY SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n");
 				    } 
 				    else if (!res) {
 					    char *headers_h;
