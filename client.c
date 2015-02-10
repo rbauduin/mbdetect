@@ -184,30 +184,8 @@ void store_control_header(char* contents, payload_specs *specs) {
 
 
 }
-// callback discarding data
-static size_t discard_data(void *contents, size_t size, size_t nmemb, payload_specs *specs){
 
-
-	// for headers only complete lines are passed
-	// if this is a control header, store it
-	if (specs->type == 'H' && is_control_header(contents)) {
-		store_control_header(contents,specs);
-	}
-	else {
-		crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
-	}
-	return size*nmemb;
-}
-
-// callback writing data to file
-static size_t
-write_in_file(void *contents, size_t size, size_t nmemb, payload_specs *specs)
-{
-  size_t realsize = size * nmemb, written;
-
-  // for headers only complete lines are passed.
-  // control headers are stored and added to the hash value
-  if (specs->type == 'H') {
+void handle_header(char* contents, size_t size, size_t nmemb, payload_specs *specs){
 	  if (! is_empty_line(contents)) {
 		  if (!is_empty_line(contents)){
 			  if (is_http_status_header(contents)) {
@@ -221,14 +199,39 @@ write_in_file(void *contents, size_t size, size_t nmemb, payload_specs *specs)
 			  }
 		  }
 	  }
+}
+
+// callback discarding data
+static size_t discard_data(void *contents, size_t size, size_t nmemb, payload_specs *specs){
 
 
-  }
-  else{
-	  crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
-  }
-  written = fwrite(contents, size, nmemb, specs->fd);
-  return written*size;
+	// for headers only complete lines are passed
+	// if this is a control header, store it
+	if (specs->type == 'H') {
+		handle_header(contents, size, nmemb, specs);
+	}
+	else{
+		crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
+	}
+	return size*nmemb;
+}
+
+// callback writing data to file
+static size_t
+write_in_file(void *contents, size_t size, size_t nmemb, payload_specs *specs)
+{
+	size_t realsize = size * nmemb, written;
+
+	// for headers only complete lines are passed.
+	// control headers are stored and added to the hash value
+	if (specs->type == 'H') {
+		handle_header(contents,size, nmemb,  specs);
+	}
+	else{
+		crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
+	}
+	written = fwrite(contents, size, nmemb, specs->fd);
+	return written*size;
 }
 //------------------------------------
 

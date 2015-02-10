@@ -173,7 +173,7 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
 	// requests to /random.jpg return a random image
         if (!strcmp(conn->uri, "/random.jpg")) {
 		random=rand()%10;
-		//snprintf(new_uri,sizeof(new_uri),"/files/cumulus_%d.jpg", random);
+		snprintf(new_uri,sizeof(new_uri),"/files/cumulus_%d.jpg", random);
 		
 		conn->uri=new_uri;
 		//printf("will return %s for client on port %d\n", conn->uri, conn->remote_port);
