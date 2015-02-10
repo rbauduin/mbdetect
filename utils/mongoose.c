@@ -5307,6 +5307,7 @@ void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *
 
 
   // ADDED
+  printf("opening path %s\n", path);
   conn->endpoint.fd = open(path, O_RDONLY | O_BINARY, 0);
 
   conn->endpoint_type = EP_FILE;
@@ -5357,11 +5358,14 @@ void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *
                   suggest_connection_header(&conn->mg_conn),
 		  extra_headers);
   // add headers to HASH
-  //printf("---\nHEaders on sha computed are:\n%s-----\n", headers);
-  //FILE *f;
-  //f=fopen("/tmp/h","w");
-  //fwrite(headers,strlen(headers),1,f);
-  //fclose(f);
+  printf("---\nHEaders on sha computed are:\n%s-----\n", headers);
+  FILE *f;
+  f=fopen("/tmp/h","w");
+  fwrite(headers,strlen(headers),1,f);
+  fclose(f);
+
+
+  //crypto_hash_sha256_init(state);
   crypto_hash_sha256_update(state, headers, strlen(headers));
 
   char sha[crypto_hash_sha256_BYTES*2+1];
@@ -5376,7 +5380,7 @@ void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *
 		  sha 
 		  );
 
-  //printf("****\nFinal headers are:\n%s****", headers);
+  printf("****\nFinal headers are:\n%s****", headers);
   //mg_printf(mg_conn, headers);
   ns_send(conn->ns_conn, headers, n);
 
@@ -5387,6 +5391,7 @@ void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *
   }
 }
 
+// FIXME: rmeove uri parametern as it is under mg_conn->uri
 int mbd_deliver_file(struct mg_connection *mg_conn, char* uri, crypto_hash_sha256_state* state) {
 	char path[MAX_PATH_SIZE];
 	strlcpy(path,uri,strlen(uri));

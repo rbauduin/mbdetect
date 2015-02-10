@@ -141,7 +141,7 @@ void file_hash(char* path, char (*sha)[crypto_hash_sha256_BYTES*2+1]) {
 int event_handler(struct mg_connection *conn, enum mg_event ev) {
   int i,random;
   // QUESTION what about doing it with pointer?
-  char new_uri[15];
+  char new_uri[95];
   switch (ev) {
     case MG_AUTH: return MG_TRUE;
     case MG_REQUEST: 
@@ -162,22 +162,23 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
         // hence serving file from filesystem
         if (!strcmp(conn->uri, "/files/cumulus.jpg")) {
 		// +20 : header name + ": " + some reserve, in case we change the name
-		mbd_deliver_file(conn, "/files/cumulus.jpg", &state );
+		mbd_deliver_file(conn, conn->uri, &state );
         	return MG_MORE;
         }
-	// If path starts with /files, serve file on disk
-        if (!strncmp(conn->uri, "/files", 6)) {
-        	return MG_FALSE;
-	}
+	//// If path starts with /files, serve file on disk
+        //if (!strncmp(conn->uri, "/files", 6)) {
+        //	return MG_FALSE;
+	//}
 
 	// requests to /random.jpg return a random image
         if (!strcmp(conn->uri, "/random.jpg")) {
 		random=rand()%10;
-		sprintf(new_uri,"/files/cumulus_%d.jpg", random);
-		printf("%s\n",new_uri);
+		//snprintf(new_uri,sizeof(new_uri),"/files/cumulus_%d.jpg", random);
+		
 		conn->uri=new_uri;
-		printf("will return %s for client on port %d\n", conn->uri, conn->remote_port);
-        	return MG_FALSE;
+		//printf("will return %s for client on port %d\n", conn->uri, conn->remote_port);
+		mbd_deliver_file(conn, new_uri, &state );
+        	return MG_MORE;
         }
 
 	// initialises a body of length 4096
