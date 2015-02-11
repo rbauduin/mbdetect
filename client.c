@@ -500,6 +500,40 @@ void get_data_handlers(CURL* curl,
 	}
 }
 
+// builds the pahts where the body and headers of the query will be saved
+void build_file_paths(config_setting_t *output_file, char** headers_path, char** body_path){
+		// the base_path is found in the config file. To that
+		// we append -D for the body, and -H for the headers,
+		// and we have the files paths where we write to
+		const char* base_path = config_setting_get_string(output_file);
+		int final_path_len = strlen(base_path)+2;
+		// +1 for \0
+		*headers_path = malloc(final_path_len+1);
+		*body_path = malloc(final_path_len+1);
+
+		// concatenate path and suffix
+		strncpy(*headers_path, base_path, final_path_len+1);
+		strncat(*headers_path, "-H", final_path_len+1);
+
+		strncpy(*body_path, base_path, final_path_len+1);
+		strncat(*body_path, "-D", final_path_len+1);
+}
+
+void set_curl_data_handlers(CURL *curl, 
+		            size_t (*handle_data_function)(void*, size_t, size_t, struct write_dest*),
+			    payload_specs *headers_specs,
+			    payload_specs *body_specs) {
+
+		// set function handling headers and body
+		curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, handle_data_function);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, handle_data_function);
+		// set user pointer passed to these respective functions
+		// Headers
+		curl_easy_setopt(curl, CURLOPT_HEADERDATA, headers_specs);
+		// Body
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, body_specs);
+
+}
 
 // where to write the data received
 void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs, payload_specs *body_specs){
@@ -508,9 +542,7 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 	// output_file setting
 	config_setting_t *output_file = config_setting_get_member(test, "output_file");
 	// length of the paths we will write to, ie with the -H and -D suffix appended
-	int final_path_len;
 	// path string retrieved from output_file setting
-	const char *base_path;
 	char *headers_path, *body_path;
 	// file opened for writing body, and headers
 	FILE * f, *fh;
@@ -528,49 +560,26 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 
 	// discard data if no output_file present
 	if (output_file==NULL){
-		// discard both data and headers
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_data_function);
-		curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, discard_data_function);
-
-		// Do not write to file, but we'll still compute the hash
-		// Body
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, body_specs);
-		// Headers
-		curl_easy_setopt(curl, CURLOPT_HEADERDATA, headers_specs);
+		set_curl_data_handlers(curl,discard_data_function,headers_specs, body_specs );
 	}
 	else {
-		// specify callback to call when receiving data for body and headers
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_in_file_function);
-		curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, write_in_file_function);
 
 		// setup the config structure passed to successive call of the callback
-		// the base_path is found in the config file. To that
-		// we append -D for the body, and -H for the headers,
-		// and we have the files paths where we write to
-		base_path = config_setting_get_string(output_file);
-		final_path_len = strlen(base_path)+2;
-		// +1 for \0
-		headers_path = malloc(final_path_len+1);
-		body_path = malloc(final_path_len+1);
 
-		// concatenate path and suffix
-		strncpy(headers_path, base_path, final_path_len+1);
-		strncat(headers_path, "-H", final_path_len+1);
-
-		strncpy(body_path, base_path, final_path_len+1);
-		strncat(body_path, "-D", final_path_len+1);
+		// get paths where to save headers and body respectively
+		build_file_paths(output_file, &headers_path, &body_path);
 
 		// open file handle, setup struct and passit to curl
 		// Body
 		f = fopen(body_path,"w");
 		body_specs->fd=f;
 		body_specs->path=body_path;
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, body_specs);
 		// Headers
 		fh = fopen(headers_path,"w");
 		headers_specs->fd=fh;
 		headers_specs->path=headers_path;
-		curl_easy_setopt(curl, CURLOPT_HEADERDATA, headers_specs);
+
+		set_curl_data_handlers(curl,write_in_file_function, headers_specs, body_specs);
 	}
 }
 
