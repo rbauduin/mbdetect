@@ -162,7 +162,7 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
         // hence serving file from filesystem
         if (!strcmp(conn->uri, "/files/cumulus.jpg")) {
 		// +20 : header name + ": " + some reserve, in case we change the name
-		mbd_deliver_file(conn, conn->uri, &state );
+		mbd_deliver_file(conn, &state );
         	return MG_MORE;
         }
 	//// If path starts with /files, serve file on disk
@@ -177,7 +177,7 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
 		
 		conn->uri=new_uri;
 		//printf("will return %s for client on port %d\n", conn->uri, conn->remote_port);
-		mbd_deliver_file(conn, new_uri, &state );
+		mbd_deliver_file(conn, &state );
         	return MG_MORE;
         }
 

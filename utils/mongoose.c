@@ -5358,11 +5358,11 @@ void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *
                   suggest_connection_header(&conn->mg_conn),
 		  extra_headers);
   // add headers to HASH
-  printf("---\nHEaders on sha computed are:\n%s-----\n", headers);
-  FILE *f;
-  f=fopen("/tmp/h","w");
-  fwrite(headers,strlen(headers),1,f);
-  fclose(f);
+  //printf("---\nHEaders on sha computed are:\n%s-----\n", headers);
+  //FILE *f;
+  //f=fopen("/tmp/h","w");
+  //fwrite(headers,strlen(headers),1,f);
+  //fclose(f);
 
 
   //crypto_hash_sha256_init(state);
@@ -5380,7 +5380,7 @@ void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *
 		  sha 
 		  );
 
-  printf("****\nFinal headers are:\n%s****", headers);
+  //printf("****\nFinal headers are:\n%s****", headers);
   //mg_printf(mg_conn, headers);
   ns_send(conn->ns_conn, headers, n);
 
@@ -5392,23 +5392,32 @@ void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *
 }
 
 // FIXME: rmeove uri parametern as it is under mg_conn->uri
-int mbd_deliver_file(struct mg_connection *mg_conn, char* uri, crypto_hash_sha256_state* state) {
+int mbd_deliver_file(struct mg_connection *mg_conn, crypto_hash_sha256_state* state) {
+	// file path corresponding to requested uri
 	char path[MAX_PATH_SIZE];
-	strlcpy(path,uri,strlen(uri));
+	// stat of file to be returned
 	struct stat st;
-	//const int exists = stat(path, &st) == 0;
+	// if file exists, returned by conversion of uri to path
+	int exists;
+	// some functions use connection and not mg_connection
 	struct connection *conn = MG_CONN_2_CONN(mg_conn);
-	const int exists = convert_uri_to_file_name(conn, path, sizeof(path), &st);
+	// sha of file to be delivered
 	char sha[crypto_hash_sha256_BYTES*2+1];
-	file_hash(path, &sha);
-	char body_hash_header[crypto_hash_sha256_BYTES*2+1+20];
-	int n = mg_snprintf(body_hash_header, sizeof(body_hash_header),
-			BODY_HASH_HEADER ": %s",
-			sha);
-	if (stat(path, &st) != 0) {
+	// header line containing the body hash
+	// +sizeof(BODY_HASH_HEADER): acccount for header name 
+	// +2 for ": " separator
+	char body_hash_header[crypto_hash_sha256_BYTES*2+1+sizeof(BODY_HASH_HEADER)+2];
+
+	exists = convert_uri_to_file_name(conn, path, sizeof(path), &st);
+	if (!exists) {
 		send_http_error(conn, 404, NULL);
 	}
 	else {
+		// send file with its computed hash in an extra header
+		file_hash(path, &sha);
+		int n = mg_snprintf(body_hash_header, sizeof(body_hash_header),
+				BODY_HASH_HEADER ": %s",
+				sha);
 		mbd_file_endpoint(mg_conn, state, path, &st, body_hash_header);
 	}
 }
