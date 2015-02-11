@@ -759,29 +759,31 @@ int main(int argc, char *argv[])
 				    hash_final(&body_specs);
 				    hash_final(&headers_specs);
 
-				    // FIXME: Maybe we can make this code more compact somehow
-				    int res = validate_header(headers_specs.control_headers, HEADERS_HASH_HEADER, headers_specs.sha);
-				    if (headers_specs.control_headers==NULL || res < 0 ) {
-					    printf("HEADERS SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n");
-				    } 
-				    else if (!res) {
-					    char *headers_h;
-					    get_header_value(headers_specs.control_headers, HEADERS_HASH_HEADER, &headers_h);
-					    printf("DIFFERENT SHA, headers modified!!\n");
-					    printf("transmitted headers hash: *%s*\n", headers_h);
-					    printf("headers sha256 :\n*%s*\n", headers_specs.sha);
-				    }
+				    if (is_protocol(curl, "http://")) {
+					    // FIXME: Maybe we can make this code more compact somehow
+					    int res = validate_header(headers_specs.control_headers, HEADERS_HASH_HEADER, headers_specs.sha);
+					    if (headers_specs.control_headers==NULL || res < 0 ) {
+						    printf("HEADERS SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n");
+					    } 
+					    else if (!res) {
+						    char *headers_h;
+						    get_header_value(headers_specs.control_headers, HEADERS_HASH_HEADER, &headers_h);
+						    printf("DIFFERENT SHA, headers modified!!\n");
+						    printf("transmitted headers hash: *%s*\n", headers_h);
+						    printf("headers sha256 :\n*%s*\n", headers_specs.sha);
+					    }
 
-				    res = validate_header(headers_specs.control_headers, BODY_HASH_HEADER, body_specs.sha);
-				    if (headers_specs.control_headers==NULL || res < 0 ) {
-					    printf("BODY SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n");
-				    } 
-				    else if (!res) {
-					    char *headers_h;
-					    get_header_value(headers_specs.control_headers, HEADERS_HASH_HEADER, &headers_h);
-					    printf("DIFFERENT SHA, BODY modified!!\n");
-					    printf("transmitted body hash: *%s*\n", headers_h);
-					    printf("body sha256 :\n*%s*\n", body_specs.sha);
+					    res = validate_header(headers_specs.control_headers, BODY_HASH_HEADER, body_specs.sha);
+					    if (headers_specs.control_headers==NULL || res < 0 ) {
+						    printf("BODY SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n");
+					    } 
+					    else if (!res) {
+						    char *headers_h;
+						    get_header_value(headers_specs.control_headers, HEADERS_HASH_HEADER, &headers_h);
+						    printf("DIFFERENT SHA, BODY modified!!\n");
+						    printf("transmitted body hash: *%s*\n", headers_h);
+						    printf("body sha256 :\n*%s*\n", body_specs.sha);
+					    }
 				    }
 
 
