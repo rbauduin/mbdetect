@@ -5289,26 +5289,14 @@ struct mg_server *mg_create_server(void *server_data, mg_handler_t handler) {
 }
 
 // modified version of open_file_endpoint to include headers in hash
-// - takes a mg_conn as first argument, original too struct connection.
-// - added the sha state argument
-void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *state, const char *file_name, struct stat *st, const char *extra_headers) {
+// changes are at the end, when headers are sent (we add control hash headers)
+void mbd_file_endpoint(struct connection *conn, const char *path, struct stat *st, const char *extra_headers) {
   char date[64], lm[64], etag[64], range[64], headers[1000];
   const char *msg = "OK", *hdr;
   time_t curtime = time(NULL);
   int64_t r1, r2;
   struct vec mime_vec;
   int n;
-  char path[MAX_PATH_SIZE];
-  mg_snprintf(path, sizeof(path), "%s", file_name);
-
-  //ADDED
-  struct connection *conn = MG_CONN_2_CONN(mg_conn);
-//  mg_conn->status_code=200;
-
-
-  // ADDED
-  printf("opening path %s\n", path);
-  conn->endpoint.fd = open(path, O_RDONLY | O_BINARY, 0);
 
   conn->endpoint_type = EP_FILE;
   ns_set_close_on_exec(conn->endpoint.fd);
@@ -5338,6 +5326,9 @@ void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *
   gmt_time_string(lm, sizeof(lm), &st->st_mtime);
   construct_etag(etag, sizeof(etag), st);
 
+  // *************************
+  // Modifications from here *
+  // *************************
   n = snprintf(headers, sizeof(headers),
                   "HTTP/1.1 %d %s\r\n"
                   "Date: %s\r\n"
@@ -5365,12 +5356,9 @@ void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *
   //fclose(f);
 
 
-  //crypto_hash_sha256_init(state);
-  crypto_hash_sha256_update(state, headers, strlen(headers));
-
   char sha[crypto_hash_sha256_BYTES*2+1];
-  sha_from_state(state,sha);
-  char base_headers[1000];
+  string_sha(headers,&sha);
+  char base_headers[sizeof(headers)];
   strcpy(base_headers,headers);
   n = mg_snprintf(headers, sizeof(headers),
 		  "%s"
@@ -5391,8 +5379,7 @@ void mbd_file_endpoint(struct mg_connection *mg_conn, crypto_hash_sha256_state *
   }
 }
 
-// FIXME: rmeove uri parametern as it is under mg_conn->uri
-int mbd_deliver_file(struct mg_connection *mg_conn, crypto_hash_sha256_state* state) {
+int mbd_deliver_file(struct mg_connection *mg_conn) {
 	// file path corresponding to requested uri
 	char path[MAX_PATH_SIZE];
 	// stat of file to be returned
@@ -5418,6 +5405,7 @@ int mbd_deliver_file(struct mg_connection *mg_conn, crypto_hash_sha256_state* st
 		int n = mg_snprintf(body_hash_header, sizeof(body_hash_header),
 				BODY_HASH_HEADER ": %s",
 				sha);
-		mbd_file_endpoint(mg_conn, state, path, &st, body_hash_header);
+		conn->endpoint.fd = open(path, O_RDONLY | O_BINARY, 0);
+		mbd_file_endpoint(conn, path, &st, body_hash_header);
 	}
 }

@@ -150,7 +150,6 @@ void mg_template(struct mg_connection *, const char *text,
 }
 #endif // __cplusplus
 
-void mbd_file_endpoint(struct mg_connection *conn, crypto_hash_sha256_state *state, const char *path, struct stat *st, const char *extra_headers); 
 
 
 
