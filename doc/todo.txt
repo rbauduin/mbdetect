@@ -1,4 +1,5 @@
 - compare actual to expected values, and control headers values
+- add body size in header ?
 - support non curl tests in config file
 - repeat tests with and without mptcp, with and without mptch checksum
 - collect data of the run on client and server. Add log function
