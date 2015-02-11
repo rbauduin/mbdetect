@@ -59,6 +59,7 @@ typedef struct write_dest {
 	control_header* control_headers;
 } payload_specs;
 
+
 void payload_specs_init(payload_specs* specs) {
 	specs->control_headers=NULL;
 	specs->fd=NULL;
@@ -85,6 +86,24 @@ void get_header_value(control_header* list, char* needle, char** result) {
 	result=NULL;
 }
 
+// extract protocol from the url
+void extract_protocol(char* contents, char** protocol){
+	char* separator;
+	int len;
+	// find the "://" separator between protocol and location
+	if ((separator=strstr(contents, "://"))!=NULL) {
+		// +1: strlcpy requires to take \0 in account
+		len = separator-contents+1;
+		*protocol=(char *)malloc(len);
+		memset(*protocol, 0, len+1);
+		strlcpy(*protocol,contents,len);
+	}
+	else{
+		//FIXME
+		// error, malformed url?
+		*protocol = NULL;
+	}
+}
 
 // extract an http header's name and value
 void extract_header(char* contents, char** name, char** value){
@@ -110,6 +129,9 @@ void extract_header(char* contents, char** name, char** value){
 	else{
 		//FIXME
 		// error, malformed header?
+		*name = NULL;
+		*value = NULL;
+
 	}
 }
 
@@ -173,7 +195,7 @@ void store_control_header(char* contents, payload_specs *specs) {
 	extract_header(contents, &(header->name), &(header->value));
 
 	// add it to the linked list
-	if (strcmp(header->name, "")) {
+	if (header->name!=NULL) {
 			specs->control_headers = control_headers_prepend(specs->control_headers, header);
 	}
 	else
@@ -201,8 +223,9 @@ void handle_header(char* contents, size_t size, size_t nmemb, payload_specs *spe
 	  }
 }
 
-// callback discarding data
-static size_t discard_data(void *contents, size_t size, size_t nmemb, payload_specs *specs){
+// callback discarding data, HTTP VERSION
+// the http version handles headers in a particular way, collecting them and computing the hash
+static size_t discard_data_http(void *contents, size_t size, size_t nmemb, payload_specs *specs){
 
 
 	// for headers only complete lines are passed
@@ -216,9 +239,16 @@ static size_t discard_data(void *contents, size_t size, size_t nmemb, payload_sp
 	return size*nmemb;
 }
 
-// callback writing data to file
+
+// callback discarding data, GENERIC version
+static size_t discard_data_generic(void *contents, size_t size, size_t nmemb, payload_specs *specs){
+	return size*nmemb;
+}
+
+// callback writing data to file, HTTP version
+// the http version handles headers in a particular way, collecting them and computing the hash
 static size_t
-write_in_file(void *contents, size_t size, size_t nmemb, payload_specs *specs)
+write_in_file_http(void *contents, size_t size, size_t nmemb, payload_specs *specs)
 {
 	size_t realsize = size * nmemb, written;
 
@@ -231,6 +261,14 @@ write_in_file(void *contents, size_t size, size_t nmemb, payload_specs *specs)
 		crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
 	}
 	written = fwrite(contents, size, nmemb, specs->fd);
+	return written*size;
+}
+
+// callback writing data to file, GENERIC version
+static size_t
+write_in_file_generic(void *contents, size_t size, size_t nmemb, payload_specs *specs)
+{
+	int written = fwrite(contents, size, nmemb, specs->fd);
 	return written*size;
 }
 //------------------------------------
@@ -436,9 +474,37 @@ int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers){
 	return res;
 }
 
+// returns 1 if we have an http request
+int is_protocol(CURL* curl, char* protocol) {
+	char *url;
+	curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &url);
+	printf("URL = %s\n", url);
+	if (strspn(url,protocol)==strlen(protocol)) {
+		return 1;
+	}
+	else {
+		return 0;
+	}
+}
+
+void get_data_handlers(CURL* curl, 
+		       size_t (**discard_data_function)(void*, size_t, size_t, struct write_dest*),
+		       size_t (**write_in_file_function)(void*, size_t, size_t, struct write_dest*)) {
+	if (is_protocol(curl,"http://")) {
+		*discard_data_function=discard_data_http;
+		*write_in_file_function=write_in_file_http;
+	}
+	else {
+		*discard_data_function=discard_data_generic;
+		*write_in_file_function=write_in_file_generic;
+	}
+}
+
+
 // where to write the data received
 void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs, payload_specs *body_specs){
 	
+
 	// output_file setting
 	config_setting_t *output_file = config_setting_get_member(test, "output_file");
 	// length of the paths we will write to, ie with the -H and -D suffix appended
@@ -449,6 +515,13 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 	// file opened for writing body, and headers
 	FILE * f, *fh;
 
+	// pointers to function that will handle the data received
+	size_t (*discard_data_function)(void*, size_t, size_t, struct write_dest*);
+	size_t (*write_in_file_function)(void*, size_t, size_t, struct write_dest*);
+	// get data handlers, based on protocol
+	get_data_handlers(curl, &discard_data_function, &write_in_file_function);
+	
+
 	// and initialise the sha state
 	crypto_hash_sha256_init(&(body_specs->sha_state));
 	crypto_hash_sha256_init(&(headers_specs->sha_state));
@@ -456,8 +529,8 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 	// discard data if no output_file present
 	if (output_file==NULL){
 		// discard both data and headers
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_data);
-		curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, discard_data);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_data_function);
+		curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, discard_data_function);
 
 		// Do not write to file, but we'll still compute the hash
 		// Body
@@ -467,8 +540,8 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 	}
 	else {
 		// specify callback to call when receiving data for body and headers
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_in_file);
-		curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, write_in_file);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_in_file_function);
+		curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, write_in_file_function);
 
 		// setup the config structure passed to successive call of the callback
 		// the base_path is found in the config file. To that
