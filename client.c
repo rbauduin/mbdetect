@@ -454,7 +454,7 @@ void set_options(CURL* curl, config_setting_t *test){
 	}
 }
 
-// set http headers
+// set http headers sent by curl
 int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers){
 	// index, curl result, number of headers
 	int j,res, headers_count;
@@ -474,7 +474,7 @@ int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers){
 	return res;
 }
 
-// returns 1 if we have an http request
+// returns 1 if we have the url starting with protocol
 int is_protocol(CURL* curl, char* protocol) {
 	char *url;
 	curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &url);
@@ -487,6 +487,8 @@ int is_protocol(CURL* curl, char* protocol) {
 	}
 }
 
+// determines the callbacks to be called according to the protocol, 
+// both when data is discarded and when data is written to a file
 void get_data_handlers(CURL* curl, 
 		       size_t (**discard_data_function)(void*, size_t, size_t, struct write_dest*),
 		       size_t (**write_in_file_function)(void*, size_t, size_t, struct write_dest*)) {
@@ -500,13 +502,15 @@ void get_data_handlers(CURL* curl,
 	}
 }
 
-// builds the pahts where the body and headers of the query will be saved
+// builds the paths where the body and headers of the query will be saved
 void build_file_paths(config_setting_t *output_file, char** headers_path, char** body_path){
 		// the base_path is found in the config file. To that
 		// we append -D for the body, and -H for the headers,
 		// and we have the files paths where we write to
 		const char* base_path = config_setting_get_string(output_file);
+		// length of the paths we will write to, ie with the -H and -D suffix appended
 		int final_path_len = strlen(base_path)+2;
+
 		// +1 for \0
 		*headers_path = malloc(final_path_len+1);
 		*body_path = malloc(final_path_len+1);
@@ -519,6 +523,9 @@ void build_file_paths(config_setting_t *output_file, char** headers_path, char**
 		strncat(*body_path, "-D", final_path_len+1);
 }
 
+
+
+// set the functions that curl will pass the received data to
 void set_curl_data_handlers(CURL *curl, 
 		            size_t (*handle_data_function)(void*, size_t, size_t, struct write_dest*),
 			    payload_specs *headers_specs,
@@ -535,24 +542,28 @@ void set_curl_data_handlers(CURL *curl,
 
 }
 
-// where to write the data received
+// when writing to a file, this function sets up the payload_specs with
+// the file handle and the path it writes to
+void setup_payload_spec_file(payload_specs *specs, char* path) {
+		FILE *f = fopen(path,"w");
+		specs->fd=f;
+		specs->path=path;
+}
+
+// sets up things to handle the data reaceived by curl
 void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs, payload_specs *body_specs){
 	
 
 	// output_file setting
 	config_setting_t *output_file = config_setting_get_member(test, "output_file");
-	// length of the paths we will write to, ie with the -H and -D suffix appended
 	// path string retrieved from output_file setting
 	char *headers_path, *body_path;
-	// file opened for writing body, and headers
-	FILE * f, *fh;
 
 	// pointers to function that will handle the data received
 	size_t (*discard_data_function)(void*, size_t, size_t, struct write_dest*);
 	size_t (*write_in_file_function)(void*, size_t, size_t, struct write_dest*);
 	// get data handlers, based on protocol
 	get_data_handlers(curl, &discard_data_function, &write_in_file_function);
-	
 
 	// and initialise the sha state
 	crypto_hash_sha256_init(&(body_specs->sha_state));
@@ -565,24 +576,20 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 	else {
 
 		// setup the config structure passed to successive call of the callback
-
 		// get paths where to save headers and body respectively
 		build_file_paths(output_file, &headers_path, &body_path);
 
 		// open file handle, setup struct and passit to curl
 		// Body
-		f = fopen(body_path,"w");
-		body_specs->fd=f;
-		body_specs->path=body_path;
+		setup_payload_spec_file(body_specs, body_path);
 		// Headers
-		fh = fopen(headers_path,"w");
-		headers_specs->fd=fh;
-		headers_specs->path=headers_path;
+		setup_payload_spec_file(headers_specs, headers_path);
 
 		set_curl_data_handlers(curl,write_in_file_function, headers_specs, body_specs);
 	}
 }
 
+// cleans things up when curl query is done. 
 void clean_output(config_setting_t *test, payload_specs *headers_specs,payload_specs  *body_specs ){
 	// control headers are awlays collected, free them
 	control_headers_free(headers_specs->control_headers);
