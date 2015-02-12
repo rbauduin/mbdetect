@@ -497,15 +497,68 @@ int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers){
 	int j,res, headers_count;
 	// the header string
 	const char *header;
+
+	crypto_hash_sha256_state headers_state;
+
+	// we immediately initialise the body state
+	crypto_hash_sha256_init(&headers_state);
+
+
+
+	FILE *f;
+	f = fopen("/tmp/curl-headers","w");
+
+	int host_set=0, accept_set=0;
+	
+	
+	// get headers from config file
 	config_setting_t *cfg_headers = config_setting_get_member(test, "headers");
+	//FIXME: if no header specified, need account for default headers by curl
 	if (cfg_headers==NULL)
 		return CURLE_OK;
 	// iterate over the list of header strings and add each to the curl_slist *headers
 	headers_count = config_setting_length(cfg_headers);
 	for (j=0; j<headers_count; j++){
 		header=config_setting_get_string_elem(cfg_headers,j);
+		add_sha_headers_content(&headers_state,header);
 		headers = curl_slist_append(headers, header); 
+		// record if we have set the host header
+		if (!strncasecmp(header,"host: ", 6)) {
+			host_set = 1;
+		}
+		if (!strncasecmp(header,"accept: ", 8)) {
+			accept_set = 1;
+		}
+		fwrite(header, strlen(header), 1, f);
 	}
+
+	// set a host header if not already set
+	if (!host_set){
+		char host_header[1024];
+		get_host_header(curl, &host_header);
+		headers = curl_slist_append(headers, host_header); 
+		add_sha_headers_content(&headers_state,host_header);
+		fwrite(host_header, strlen(host_header), 1, f);
+	}
+	if (!accept_set){
+		char accept_header[1024]="Accept: */*";
+		headers = curl_slist_append(headers, accept_header); 
+		add_sha_headers_content(&headers_state,accept_header);
+		fwrite(accept_header, strlen(accept_header), 1, f);
+	}
+	fclose(f);
+	// sha string
+	char sha[crypto_hash_sha256_BYTES*2+1];
+        // string of header containing sha.
+	// +2 : ": "
+	// +strlen(HEADER_HEADERS_HASH): name of the header
+	char sha_header[crypto_hash_sha256_BYTES*2+1+2+strlen(HEADER_HEADERS_HASH)];
+	// compute sha
+	sha_from_state(&headers_state,&sha);
+	// build header and add it the the curl headers
+	snprintf(sha_header, sizeof(sha_header), "%s: %s", HEADER_HEADERS_HASH, sha);
+	headers = curl_slist_append(headers, sha_header); 
+	
 	// add the headers list to curl
     	res = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers); 
 	return res;
@@ -521,6 +574,30 @@ int is_protocol(CURL* curl, char* protocol) {
 	else {
 		return 0;
 	}
+}
+
+int host_from_curl(CURL *curl,char (*host)[1024] ){
+	int start, length, i;
+	memset(host,0,1024);
+	if (is_protocol(curl, "http://")){
+		char *url;
+		curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &url);
+		start = 7;
+		i=start;
+		while (url[i]!='/' && url[i]!='\0')
+			i++;
+		length=i-start;
+		strncpy(*host, url+7, length);
+		printf("HOST=%s\n", *host);
+	}
+}
+
+int get_host_header(CURL* curl, char (*host_header)[1024]){
+	char host[1024];
+	host_from_curl(curl, &host);
+	memset(*host_header,0,sizeof(host_header));
+	snprintf(*host_header, min(strlen(host)+7, sizeof(*host_header)),"Host: %s", host);  
+	printf("Setting host header= %s \n", *host_header);
 }
 
 // determines the callbacks to be called according to the protocol, 

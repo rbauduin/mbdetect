@@ -34,14 +34,6 @@ void set_header(struct mg_connection *conn,crypto_hash_sha256_state *state, char
 		printf("NOT hashing HEADER %s\n", header);
 }
 
-// add a part to the computed sha headers
-// used to add headers automatically by mongoose
-// for use only when we generate the content ourself
-void add_sha_headers_content(crypto_hash_sha256_state *state, char* content){
-	crypto_hash_sha256_update(state, content, strlen(content));
-}
-
-
 // add the chunked encoding header to the sha computation 
 // and send the sha256 value as a last header
 // for use only when we generate the content ourself
@@ -132,11 +124,27 @@ void generate_content(struct mg_connection *conn, char** body) {
 
 	buffer_size = add_content(body, buffer_size, &body_state, "%s\n", "Welcome hehe!");
 	buffer_size = add_content(body, buffer_size, &body_state, "%s\n", mg_get_header(conn, "Host"));
-	//printf("---Start of headers---\n");
+	printf("---Start of headers---\n");
+	crypto_hash_sha256_state received_headers_state;
+	crypto_hash_sha256_init(&received_headers_state);
         for ( i = 0; i < conn->num_headers; i++){
+		printf("%s: %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
+
+		if (! is_headers_hash_control_header(conn->http_headers[i].name)) {
+			char header_line[1024];
+			memset(header_line,0,sizeof(header_line));
+			snprintf(header_line, 1024,"%s: %s", conn->http_headers[i].name, conn->http_headers[i].value);  
+			add_sha_headers_content(&received_headers_state,header_line);
+			printf("added to hash: %s\n",header_line);
+		}
 	    buffer_size = add_content(body, buffer_size, &body_state,  "%s : %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
 	}
-	//printf("---End of headers---\n");
+	printf("---End of headers---\n");
+	char received_headers_sha[crypto_hash_sha256_BYTES*2+1];
+	sha_from_state(&received_headers_state, &received_headers_sha);
+	printf("Received headers sha : %s\n", received_headers_sha);
+
+
 	buffer_size = add_content(body, buffer_size, &body_state, "%s\n",  conn->remote_ip);
 	buffer_size = add_content(body, buffer_size, &body_state, "%d\n", conn->remote_port);
 	buffer_size = add_content(body, buffer_size, &body_state, "%zd\n", conn->content_len);

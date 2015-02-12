@@ -7,7 +7,7 @@ int is_control_header(char* contents) {
 	return (strstr(contents,"X-NH-")!=NULL);
 }
 
-
+// FIXME: use strncmp with length of header we are looking for
 int is_headers_hash_control_header(char* contents) {
 	return (strstr(contents,HEADER_HEADERS_HASH)!=NULL);
 }
@@ -60,3 +60,14 @@ void file_hash(char* path, char (*sha)[crypto_hash_sha256_BYTES*2+1]) {
 	sodium_bin2hex(*sha, sizeof(out)*2+1, out, sizeof(out));
 
 }
+
+
+// add a part to the computed sha headers
+// used to add headers automatically set by mongoose
+// and in the client to compute hash of headers set by curl
+// for use only when we generate the content ourself
+void add_sha_headers_content(crypto_hash_sha256_state *state, char* content){
+	crypto_hash_sha256_update(state, content, strlen(content));
+}
+
+
