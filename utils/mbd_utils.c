@@ -71,3 +71,53 @@ void add_sha_headers_content(crypto_hash_sha256_state *state, char* content){
 }
 
 
+// add a control header entry in the linked list
+// added as new head of the list
+control_header* control_headers_prepend(control_header* list, control_header* new) {
+	// if list does not exist, this is the first entry
+	if (list==NULL) {
+		return new;
+	}
+	// prepend
+	else{
+		new->next = list;
+		return new;
+	}
+
+}
+
+int free_control_header(control_header *header) {
+		if (header->name!=NULL)
+			free(header->name);
+		if (header->value!=NULL)
+			free(header->value);
+		return 0;
+}
+
+// free all memory allocated when we built the control_headers linked list
+int control_headers_free(control_header* list) {
+	int i=0;
+	control_header* previous_head;
+	while (list!=NULL) {
+		free_control_header(list);
+		previous_head = list;
+		list = list->next;
+		free(previous_head);
+		i++;
+	};
+	return i;
+}
+
+
+// extract header value from the headers list
+void get_header_value(control_header* list, char* needle, char** result) {
+	while (list!=NULL){
+		if(!strcmp(list->name,needle)){
+			*result=list->value;
+			return;
+		}
+		list=list->next;
+	}
+	result=NULL;
+}
+

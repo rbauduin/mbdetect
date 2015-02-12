@@ -127,8 +127,18 @@ void generate_content(struct mg_connection *conn, char** body) {
 	printf("---Start of headers---\n");
 	crypto_hash_sha256_state received_headers_state;
 	crypto_hash_sha256_init(&received_headers_state);
+	control_header *headers=NULL;
+	control_header *header;
+
         for ( i = 0; i < conn->num_headers; i++){
 		printf("%s: %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
+		header = (control_header *) malloc(sizeof(control_header));
+		header->next = NULL;
+		// FIXME : ok to get rid of const qualifier?
+		header->name=(char *)conn->http_headers[i].name;
+		header->value=(char *)conn->http_headers[i].value;
+
+		headers = control_headers_prepend(headers, header);
 
 		if (! is_headers_hash_control_header(conn->http_headers[i].name)) {
 			char header_line[1024];
@@ -143,6 +153,17 @@ void generate_content(struct mg_connection *conn, char** body) {
 	char received_headers_sha[crypto_hash_sha256_BYTES*2+1];
 	sha_from_state(&received_headers_state, &received_headers_sha);
 	printf("Received headers sha : %s\n", received_headers_sha);
+	char *received_sha;
+	get_header_value(headers,HEADER_HEADERS_HASH, &received_sha);
+	if (strncmp(received_headers_sha, received_sha, crypto_hash_sha256_BYTES*2+1)) {
+		printf("HEADERS MODIFIED\n");
+		printf("Received headers sha : %s\n", received_headers_sha);
+	}
+	else{
+		printf("HEADERS RECEIVED OK\n");
+	}
+	// TODO: Add a header sent to client telling if we received the headers correctly
+	
 
 
 	buffer_size = add_content(body, buffer_size, &body_state, "%s\n",  conn->remote_ip);

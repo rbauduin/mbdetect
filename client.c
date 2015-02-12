@@ -34,13 +34,6 @@ int mappings_len = sizeof(mappings)/sizeof(mappings[0]);
 // stuff to write output to file
 // *****************************
 
-// store control headers sent by server in a chained list
-// their name start with X-NH- (NH for not included in hash)
-typedef struct control_header {
-	char *name;
-	char* value;
-	struct control_header* next;
-} control_header;
 
 // structure keeping where we write
 typedef struct write_dest {
@@ -74,19 +67,6 @@ void hash_final(payload_specs* specs) {
 	crypto_hash_sha256_final(&(specs->sha_state), out);
 	sodium_bin2hex(specs->sha, sizeof(out)*2+1, out, sizeof(out));
 }
-
-// extract header value from the headers list
-void get_header_value(control_header* list, char* needle, char** result) {
-	while (list!=NULL){
-		if(!strcmp(list->name,needle)){
-			*result=list->value;
-			return;
-		}
-		list=list->next;
-	}
-	result=NULL;
-}
-
 // extract protocol from the url
 void extract_protocol(char* contents, char** protocol){
 	char* separator;
@@ -173,42 +153,6 @@ int validate_header(control_header *list, char* header_name, char* expected_valu
 	return !strcmp(expected_value,header_value);
 }
 
-// add a control header entry in the linked list
-// added as new head of the list
-control_header* control_headers_prepend(control_header* list, control_header* new) {
-	// if list does not exist, this is the first entry
-	if (list==NULL) {
-		return new;
-	}
-	// prepend
-	else{
-		new->next = list;
-		return new;
-	}
-
-}
-
-int free_control_header(control_header *header) {
-		if (header->name!=NULL)
-			free(header->name);
-		if (header->value!=NULL)
-			free(header->value);
-		return 0;
-}
-
-// free all memory allocated when we built the control_headers linked list
-int control_headers_free(control_header* list) {
-	int i=0;
-	control_header* previous_head;
-	while (list!=NULL) {
-		free_control_header(list);
-		previous_head = list;
-		list = list->next;
-		free(previous_head);
-		i++;
-	};
-	return i;
-}
 
 // add an entry in the control_headers linked list of the payload spec
 void store_control_header(char* contents, payload_specs *specs) {
