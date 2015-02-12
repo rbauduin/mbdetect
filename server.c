@@ -50,7 +50,7 @@ void end_hashed_headers(struct mg_connection *conn, crypto_hash_sha256_state *st
 	char sha[crypto_hash_sha256_BYTES*2+1];
 	// finalise sha computation and send the header
 	sha_from_state(state,&sha);
-	mg_send_header(conn, HEADERS_HASH_HEADER ,sha);
+	mg_send_header(conn, HEADER_HEADERS_HASH ,sha);
 }
 
 // heavily inspired by mongoose mg_printf_data
@@ -93,7 +93,7 @@ void end_content(struct mg_connection * conn,crypto_hash_sha256_state *body_stat
 	sha=malloc(sizeof(out)*2+1);
 	sodium_bin2hex(sha, sizeof(out)*2+1, out, sizeof(out));
 
-	set_header(conn, headers_state, BODY_HASH_HEADER,sha);
+	set_header(conn, headers_state, HEADER_BODY_HASH,sha);
 	free(sha);
 }
 

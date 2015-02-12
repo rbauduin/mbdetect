@@ -9,7 +9,7 @@ int is_control_header(char* contents) {
 
 
 int is_headers_hash_control_header(char* contents) {
-	return (strstr(contents,HEADERS_HASH_HEADER)!=NULL);
+	return (strstr(contents,HEADER_HEADERS_HASH)!=NULL);
 }
 
 int is_empty_line(char *contents) {

@@ -5391,9 +5391,9 @@ int mbd_deliver_file(struct mg_connection *mg_conn) {
 	// sha of file to be delivered
 	char sha[crypto_hash_sha256_BYTES*2+1];
 	// header line containing the body hash
-	// +sizeof(BODY_HASH_HEADER): acccount for header name 
+	// +sizeof(HEADER_BODY_HASH): acccount for header name 
 	// +2 for ": " separator
-	char body_hash_header[crypto_hash_sha256_BYTES*2+1+sizeof(BODY_HASH_HEADER)+2];
+	char body_hash_header[crypto_hash_sha256_BYTES*2+1+sizeof(HEADER_BODY_HASH)+2];
 
 	exists = convert_uri_to_file_name(conn, path, sizeof(path), &st);
 	if (!exists) {
@@ -5403,7 +5403,7 @@ int mbd_deliver_file(struct mg_connection *mg_conn) {
 		// send file with its computed hash in an extra header
 		file_hash(path, &sha);
 		int n = mg_snprintf(body_hash_header, sizeof(body_hash_header),
-				BODY_HASH_HEADER ": %s",
+				HEADER_BODY_HASH ": %s",
 				sha);
 		conn->endpoint.fd = open(path, O_RDONLY | O_BINARY, 0);
 		mbd_file_endpoint(conn, path, &st, body_hash_header);

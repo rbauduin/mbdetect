@@ -138,29 +138,28 @@ void extract_header(char* contents, char** name, char** value){
 
 int validate_http_headers(payload_specs headers_specs, payload_specs body_specs, char (*message)[VALIDATION_MESSAGE_LENGTH]) {
 	// FIXME: Maybe we can make this code more compact somehow
-	int res = validate_header(headers_specs.control_headers, HEADERS_HASH_HEADER, headers_specs.sha);
+	int res = validate_header(headers_specs.control_headers, HEADER_HEADERS_HASH, headers_specs.sha);
 	if (headers_specs.control_headers==NULL || res < 0 ) {
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "HEADERS SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n");
 				return 0;
 	} 
 	if (!res) {
 		char *headers_h;
-		get_header_value(headers_specs.control_headers, HEADERS_HASH_HEADER, &headers_h);
+		get_header_value(headers_specs.control_headers, HEADER_HEADERS_HASH, &headers_h);
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "DIFFERENT SHA, headers modified!!\n");
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "transmitted headers hash: *%s*\n", headers_h);
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "computed headers sha256 :\n*%s*\n", headers_specs.sha);
 	}
 
-	res = validate_header(headers_specs.control_headers, BODY_HASH_HEADER, body_specs.sha);
+	res = validate_header(headers_specs.control_headers, HEADER_BODY_HASH, body_specs.sha);
 	if (!res) {
 		char *headers_h;
-		get_header_value(headers_specs.control_headers, HEADERS_HASH_HEADER, &headers_h);
+		get_header_value(headers_specs.control_headers, HEADER_HEADERS_HASH, &headers_h);
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "DIFFERENT SHA, BODY modified!!\n");
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "transmitted body hash: *%s*\n", headers_h);
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "computed body sha256 :\n*%s*\n", body_specs.sha);
 	}
 	snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "HEADERS VALIDATIONS DONE\n");
-	//printf("%s\n", *message);
 }
 int validate_header(control_header *list, char* header_name, char* expected_value) {
 	char* header_value=NULL;

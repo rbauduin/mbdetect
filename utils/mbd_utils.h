@@ -1,6 +1,6 @@
 #include <sodium.h>
-#define HEADERS_HASH_HEADER "X-NH-H-SHA256"
-#define BODY_HASH_HEADER "X-NH-D-SHA256"
+#define HEADER_HEADERS_HASH "X-NH-H-SHA256"
+#define HEADER_BODY_HASH "X-NH-D-SHA256"
 #define VALIDATION_MESSAGE_LENGTH 2048
 
 // useful to append to mystring with snprintf(eos(mystring), size-strlen(mystring), fmt, ...)
