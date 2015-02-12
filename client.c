@@ -22,8 +22,9 @@ mapping mappings[] =  {
 	,{"CURLOPT_POST", CURLOPT_POST, "long"}
 	,{"CURLOPT_POSTFIELDSIZE", CURLOPT_POSTFIELDSIZE, "long"}
 	,{"CURLOPT_POSTFIELDS",CURLOPT_POSTFIELDS,"str"}
-	,{"CURLINFO_SIZE_DOWNLOAD",CURLINFO_SIZE_DOWNLOAD,"int"}
+	,{"CURLINFO_SIZE_DOWNLOAD",CURLINFO_SIZE_DOWNLOAD,"double"}
 	,{"CURLINFO_RESPONSE_CODE",CURLINFO_RESPONSE_CODE ,"int"}
+	,{"CURLINFO_EFFECTIVE_URL",CURLINFO_EFFECTIVE_URL ,"string"}
 	
 }; 
 
@@ -272,81 +273,92 @@ write_in_file_generic(void *contents, size_t size, size_t nmemb, payload_specs *
 	return written*size;
 }
 //------------------------------------
+//
 
+// union type capable of holding each type of value found in validations
+typedef union validation_value_t {
+		int ival;
+		long long llval;
+		double fval;
+		char *sval;
+} validation_value_t;
 
+// check that the validation specified in entry passes.
+// Returns 0 if it fails, 1 if it passes
+// Also sets the message detailing what happened, both in case of success and failure
+// // FIXME: add other comparisons than equality
+int perform_validation(CURL *curl,config_setting_t* entry, char (*message)[2048]) {
+	// value to return
+	int res;
+	
+	// actual value we got in this run
+	validation_value_t actual;
 
-// FIXME: can we limit code duplication here?
-
-// ----- double validations
-int extract_double(config_setting_t* entry, const char* name, double* value) {
-	config_setting_t *name_entry = config_setting_get_member(entry, "name");
+	// value entry from the config file. 
+	// value_entry->value contains the union typed value we need to compare to expected value
 	config_setting_t *value_entry = config_setting_get_member(entry, "value");
-	if (name_entry == NULL || value_entry == NULL) {
+
+	// name entry from the config file, and its string value.
+	// Its value is the name of the option passed to curl_easy_getinfo, which we get from the mappings
+	config_setting_t *name_entry = config_setting_get_member(entry, "name");
+	const char * name_str=config_setting_get_string(name_entry);
+	// mapping of the option name to its value
+	mapping m;
+	int mapping_found = find_mapping(name_str,&m);
+	if (mapping_found) {
+		printf("ERROR, no mapping found!\n");
+		exit(1);
+	}
+
+	if (value_entry == NULL) {
 		return -1;
 	}
-	name = config_setting_get_string(name_entry);
-	*value = config_setting_get_float(value_entry);
-	return 0;
-}
-
-int get_actual_double(CURL *curl, const char *name, double* actual) {
-	int code;
-	code = find_code(name);
-	curl_easy_getinfo(curl, code, actual);
-}
-int double_equal_validation(CURL* curl,config_setting_t* validation) {
-	double expected, actual;
-	config_setting_t *name_setting;
-	const char * name;
-
-	name_setting = config_setting_get_member(validation, "name");
-	name = config_setting_get_string(name_setting);
-	extract_double(validation, name,&expected);
-	get_actual_double(curl, name, &actual);
-	if (actual==expected){
-		printf("As expected, %f = %f\n",actual, expected);
+	// for each type of value:
+	// - get the actual value from curl
+	// - compare it to the expected value found in the config file
+	// - set message accordingly
+	switch(value_entry->type)
+	{ 
+		case CONFIG_TYPE_FLOAT:
+			curl_easy_getinfo(curl, m.code, &(actual.fval));
+			if (res = (value_entry->value.fval == actual.fval)) {
+				snprintf(*message, VALIDATION_MESSAGE_LENGTH, "PASS, %s = %f\n", name_str, actual.fval);
+			}
+			else {
+				snprintf(*message, VALIDATION_MESSAGE_LENGTH, "FAIL, %s expected %f but is %f\n", name_str, value_entry->value.fval, actual.fval);
+			}
+			break;
+		case CONFIG_TYPE_INT:
+			curl_easy_getinfo(curl, m.code, &(actual.ival));
+			if (res = (value_entry->value.ival == actual.ival)) {
+				snprintf(*message, VALIDATION_MESSAGE_LENGTH, "PASS, %s = %d\n", name_str, actual.ival);
+			}
+			else {
+				snprintf(*message, VALIDATION_MESSAGE_LENGTH, "FAIL, %s expected %d but is %d\n", name_str, value_entry->value.ival, actual.ival);
+			}
+			break;
+		case CONFIG_TYPE_INT64:
+			curl_easy_getinfo(curl, m.code, &(actual.llval));
+			if (res = (value_entry->value.llval == actual.llval)) {
+				snprintf(*message, VALIDATION_MESSAGE_LENGTH, "PASS, %s = %lld\n", name_str, actual.llval);
+			}
+			else {
+				snprintf(*message, VALIDATION_MESSAGE_LENGTH, "FAIL, %s expected %lld but is %lld\n", name_str, value_entry->value.llval, actual.llval);
+			}
+			break;
+		case CONFIG_TYPE_STRING:
+			curl_easy_getinfo(curl, m.code, &(actual.sval));
+			if (res = (!strcmp(value_entry->value.sval,actual.sval))) {
+				snprintf(*message, VALIDATION_MESSAGE_LENGTH, "PASS, %s = %s\n", name_str, actual.sval);
+			}
+			else {
+				snprintf(*message, VALIDATION_MESSAGE_LENGTH, "FAIL, %s expected %s but is %s\n", name_str, value_entry->value.sval, actual.sval);
+			}
+			break;
 	}
-	else {
-		printf("UNEXPECTED, got %f but expected %f\n", actual, expected);
-	}
-
+	return res;
 }
 
-
-// ----- int validations
-int extract_int(config_setting_t* entry, const char* name, int* value) {
-	config_setting_t *name_entry = config_setting_get_member(entry, "name");
-	config_setting_t *value_entry = config_setting_get_member(entry, "value");
-	if (name_entry == NULL || value_entry == NULL) {
-		return -1;
-	}
-	name = config_setting_get_string(name_entry);
-	*value = config_setting_get_int(value_entry);
-	return 0;
-}
-
-int get_actual_int(CURL *curl, const char *name, int* actual) {
-	int code;
-	code = find_code(name);
-	curl_easy_getinfo(curl, code, actual);
-}
-int int_equal_validation(CURL* curl,config_setting_t* validation) {
-	int expected, actual;
-	config_setting_t *name_setting;
-	const char * name;
-
-	name_setting = config_setting_get_member(validation, "name");
-	name = config_setting_get_string(name_setting);
-	extract_int(validation, name,&expected);
-	get_actual_int(curl, name, &actual);
-	if (actual==expected){
-		printf("As expected, %s %d = %d\n", name, actual, expected);
-	}
-	else {
-		printf("UNEXPECTED, got %d but expected %d\n", actual, expected);
-	}
-
-}
 
 // find a mapping options as string -> option symbol
 int find_mapping(const char* option, mapping* m) {
@@ -731,26 +743,9 @@ int main(int argc, char *argv[])
 					    // iterate over validation of this query
 					    for(m=0;m<validations_count;m++){
 						    validation = config_setting_get_elem(validations, m);
-						    type_entry = config_setting_get_member(validation, "type");
-						    // validation possible only if its type is specified
-						    if (type_entry!=NULL){
-							    type_str = config_setting_get_string(type_entry);
-							    // curl option of type int
-							    if (!strncmp(type_str, "int_equal", sizeof(type_str))){
-								    int_equal_validation(curl, validation);
-							    }
-							    // curl option of type double
-							    else if (!strncmp(type_str, "double_equal", sizeof(type_str))){
-								    double_equal_validation(curl, validation);
-							    }
-							    // unknown test type
-							    else {
-								    printf("VALIDATION TYPE UNKNOWN : %s\n", type_str);
-							    }
-						    }
-						    else {
-							    continue;
-						    }
+						    char message[VALIDATION_MESSAGE_LENGTH];
+						    perform_validation(curl,validation, &message);
+						    printf("%s",message);
 					    }
 				    }
 				    // end of validations in config file
