@@ -531,10 +531,8 @@ int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers, 
 	while (additional_headers!=NULL) {
 		head = additional_headers;
 		additional_headers=additional_headers->next;
-		printf("value = %s and name = %s\n", head->value, head->name);
 		snprintf(header_line, MAX_HEADER_SIZE, "%s: %s", head->name, head->value);
 		add_sha_headers_content(&headers_state,header_line);
-		printf("%s\n",header_line);
 		fwrite(header_line, strlen(header_line), 1, f);
 		headers = curl_slist_append(headers, header_line); 
 

@@ -5409,3 +5409,39 @@ int mbd_deliver_file(struct mg_connection *mg_conn) {
 		mbd_file_endpoint(conn, path, &st, body_hash_header);
 	}
 }
+
+int send_404_with_hash(struct mg_connection *mg_conn) {
+	// headers and body we will send
+	// their respective sha and length
+	char headers[1024], body[200];
+	char body_sha[crypto_hash_sha256_BYTES*2+1], headers_sha[crypto_hash_sha256_BYTES*2+1];
+	int headers_len, body_len;
+
+	// set connection status
+	mg_conn->status_code = 404;
+
+
+	// build the body and compute its sha
+	body_len = mg_snprintf(body, sizeof(body),
+			NOT_FOUND_BODY);
+	string_sha(body, &body_sha);
+
+
+	// build the hashed headers and compute the sha
+	headers_len = mg_snprintf(headers, sizeof(headers),
+			"HTTP/1.1 404 NOT FOUND\r\nContent-Length: %d\r\n"
+			"Content-Type: text/plain\r\n",
+			body_len);
+	headers_len += mg_snprintf(eos(headers), sizeof(headers)-strlen(headers),
+			HEADER_BODY_HASH ": %s\r\n", body_sha);
+
+	// append the sha of the headers in a last header HEADER_HEADERS_HASH
+	string_sha(headers, &headers_sha);
+	headers_len += mg_snprintf(eos(headers), sizeof(headers)-strlen(headers),
+			HEADER_HEADERS_HASH ": %s\r\n\r\n", headers_sha);
+
+	// send response
+	struct connection *conn = MG_CONN_2_CONN(mg_conn);
+	ns_send(conn->ns_conn, headers, headers_len);
+	ns_send(conn->ns_conn, body, body_len);
+}

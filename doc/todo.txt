@@ -5,3 +5,4 @@
 - collect data of the run on client and server. Add log function
 - error handling
 - collect the payload_specs of the subsequent repetition of a query in a linked list
+- generate control headers with 404 response

@@ -227,12 +227,17 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
         }
 	
 	// If we get here, wee need to generate content ourself
-	char *body;
-	generate_content(conn, &body);
-	send_content(conn, body);
-	free(body);
+        if (!strcmp(conn->uri, "/")) {
+		char *body;
+		generate_content(conn, &body);
+		send_content(conn, body);
+		free(body);
+		return MG_TRUE;
+	}
 
+	send_404_with_hash(conn);
 	return MG_TRUE;
+
     default: return MG_FALSE;
   }
 }
