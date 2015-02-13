@@ -144,6 +144,6 @@ void get_header_value(control_header* list, char* needle, char** result) {
 		}
 		list=list->next;
 	}
-	result=NULL;
+	*result=NULL;
 }
 

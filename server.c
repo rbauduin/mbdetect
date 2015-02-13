@@ -96,6 +96,9 @@ int validate_headers_sha(char sha[crypto_hash_sha256_BYTES*2+1] , control_header
 	// the sha computed by the client of headers it sent us
 	char *received_sha;
 	get_header_value(headers,HEADER_HEADERS_HASH, &received_sha);
+	if (received_sha==NULL) {
+		return 0;
+	}
 	return (!strncmp( sha, received_sha, crypto_hash_sha256_BYTES*2+1));
 
 }
