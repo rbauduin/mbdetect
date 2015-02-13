@@ -92,12 +92,20 @@ control_header* control_headers_prepend(control_header* list, control_header* ne
 	}
 
 }
-void collect_control_header_components(control_header **headers, const char *name, const char *value){
+void collect_control_header_components(control_header **headers, const char *n, const char *v){
+
+	// we allocate memory for the fields and copy the values we receive
+	// this way we know we always have to free fields when freeing the headers list
+	char *name=(char *) malloc(strlen(n)+1);
+	char *value=(char *) malloc(strlen(v)+1);
+	strcpy(name, n);
+	strcpy(value, v);
+
 	control_header *header = (control_header *) malloc(sizeof(control_header));
 	header->next = NULL;
 	// FIXME : ok to get rid of const qualifier?
-	header->name=(char *)name;
-	header->value=(char *)value;
+	header->name=name;
+	header->value=value;
 	*headers = control_headers_prepend(*headers, header);
 
 }
@@ -113,13 +121,11 @@ int free_control_header(control_header *header) {
 // free all memory allocated when we built the control_headers linked list
 // free fields indicate if the name and value field have been allocated by us or not
 // (yes in the client, no in the server)
-int control_headers_free(control_header* list, int free_fields) {
+int control_headers_free(control_header* list) {
 	int i=0;
 	control_header* previous_head;
 	while (list!=NULL) {
-		if (free_fields) {
-			free_control_header(list);
-		}
+		free_control_header(list);
 		previous_head = list;
 		list = list->next;
 		free(previous_head);

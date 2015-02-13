@@ -390,8 +390,25 @@ int read_config(char* path, config_t * cfg) {
   return 0;
 }
 
+// If this is a POST, we add the header Content-Type and add it to the sha computation
+// If we didn't, curl would do it automatically and screw up sha computation server side
+// sale from Content-Length
+void handle_post_options(control_header **additional_headers, const char * name, long value_long) {
+	if (!strncmp(name, "CURLOPT_POST", max(strlen(name), strlen("CURLOPT_POST")) && value_long!=0)){
+		collect_control_header_components(additional_headers, "Content-Type", "application/x-www-form-urlencoded"); 
+	}
+	else if(!strncmp(name, "CURLOPT_POSTFIELDSIZE", strlen("CURLOPT_POSTFIELDSIZE"))){
+		// convert the long to a string
+		char value[MAX_HEADER_VALUE_SIZE];
+		snprintf(value, MAX_HEADER_VALUE_SIZE,"%ld", value_long);
+		// add the header to the list
+		collect_control_header_components(additional_headers, "Content-Length", value); 
+	}
+}
+
 // set curl options
-void set_options(CURL* curl, config_setting_t *test){
+// headers to be set later by set_headers are collected in additional_header
+void set_options(CURL* curl, config_setting_t *test, control_header **additional_headers){
 	int j, options_count;
 	// an option, its name and its value
 	config_setting_t *option, *name, *value;
@@ -431,14 +448,16 @@ void set_options(CURL* curl, config_setting_t *test){
 		}
 		//printf("mapping : %s %s\n",m.name,m.type);
 		if (!strncmp(m.type,"str",3)) {
+			// set curl option
 			value_str = config_setting_get_string(value);
-		//	printf("STR %s = %s\n", name_str, value_str);
 			curl_easy_setopt(curl, find_code(name_str), value_str); 
 		}
 		else if (!strncmp(m.type,"long",4)){
+			// set curl option
 			value_long = config_setting_get_int64(value);
-		//	printf("LONG %s = %lu\n", name_str, value_long);
 			curl_easy_setopt(curl, find_code(name_str), value_long); 
+			// set additional headers if this is a post option
+			handle_post_options(additional_headers, name_str, value_long);
 		}
 		else {
 			printf("NO MATCH\n____________________________________\n");
@@ -447,7 +466,9 @@ void set_options(CURL* curl, config_setting_t *test){
 }
 
 // set http headers sent by curl
-int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers){
+// additional_headers are to be set in addition of those found in the config file. 
+// This is notably use for POST headers
+int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers, control_header *additional_headers ){
 	// index, curl result, number of headers
 	int j,res, headers_count;
 	// the header string
@@ -505,6 +526,21 @@ int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers){
 			fwrite(accept_header, strlen(accept_header), 1, f);
 		}
 	}
+	control_header * head;
+	char header_line[MAX_HEADER_SIZE];
+	while (additional_headers!=NULL) {
+		head = additional_headers;
+		additional_headers=additional_headers->next;
+		printf("value = %s and name = %s\n", head->value, head->name);
+		snprintf(header_line, MAX_HEADER_SIZE, "%s: %s", head->name, head->value);
+		add_sha_headers_content(&headers_state,header_line);
+		printf("%s\n",header_line);
+		fwrite(header_line, strlen(header_line), 1, f);
+		headers = curl_slist_append(headers, header_line); 
+
+	}
+	//headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded"); 
+	//headers = curl_slist_append(headers, "Content-Length: 20"); 
 	fclose(f);
 	// sha string
 	char sha[crypto_hash_sha256_BYTES*2+1];
@@ -673,7 +709,7 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 // cleans things up when curl query is done. 
 void clean_output(config_setting_t *test, payload_specs *headers_specs,payload_specs  *body_specs ){
 	// control headers are awlays collected, free them
-	control_headers_free(headers_specs->control_headers, 1);
+	control_headers_free(headers_specs->control_headers);
 	
 	// if there was output written to a file, clean stuff
 	config_setting_t *output_file = config_setting_get_member(test, "output_file");
@@ -794,10 +830,11 @@ int main(int argc, char *argv[])
 			    headers_specs.type='H';
 		    
 			    // set options and headers
-			    set_options(curl, query);   // IMPROV: extract config parsing out of the loop, as same for all repetitions
+			    control_header *additional_headers=NULL;
+			    set_options(curl, query, &additional_headers);
 			    set_output(curl, query, &headers_specs, &body_specs);
 			    curl_headers=NULL;
-			    set_headers(curl, query, curl_headers);
+			    set_headers(curl, query, curl_headers, additional_headers);
 
 			    // Perform query
 			    res = curl_easy_perform(curl);
@@ -843,6 +880,7 @@ int main(int argc, char *argv[])
 
 				    /* cleanup after each query */ 
 				    clean_output(query, &headers_specs, &body_specs);
+				    control_headers_free(additional_headers);
 				    curl_slist_free_all(curl_headers);
 				    curl_easy_cleanup(curl);
 

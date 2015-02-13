@@ -190,7 +190,7 @@ void generate_content(struct mg_connection *conn, char** body) {
 	end_hashed_headers(conn,&headers_state);
 
 	// cleanup
-	control_headers_free(headers, 0);
+	control_headers_free(headers);
 
 }
 
