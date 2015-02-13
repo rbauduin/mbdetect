@@ -70,6 +70,13 @@ void add_sha_headers_content(crypto_hash_sha256_state *state, char* content){
 	crypto_hash_sha256_update(state, content, strlen(content));
 }
 
+void add_sha_headers_components(crypto_hash_sha256_state *received_headers_state, const char* name, const char *value){
+	char header_line[1024];
+	memset(header_line,0,sizeof(header_line));
+	snprintf(header_line, 1024,"%s: %s", name, value);  
+	add_sha_headers_content(received_headers_state,header_line);
+	printf("added to hash: %s\n",header_line);
+}
 
 // add a control header entry in the linked list
 // added as new head of the list
@@ -85,6 +92,15 @@ control_header* control_headers_prepend(control_header* list, control_header* ne
 	}
 
 }
+void collect_control_header_components(control_header **headers, const char *name, const char *value){
+	control_header *header = (control_header *) malloc(sizeof(control_header));
+	header->next = NULL;
+	// FIXME : ok to get rid of const qualifier?
+	header->name=(char *)name;
+	header->value=(char *)value;
+	*headers = control_headers_prepend(*headers, header);
+
+}
 
 int free_control_header(control_header *header) {
 		if (header->name!=NULL)
@@ -95,11 +111,15 @@ int free_control_header(control_header *header) {
 }
 
 // free all memory allocated when we built the control_headers linked list
-int control_headers_free(control_header* list) {
+// free fields indicate if the name and value field have been allocated by us or not
+// (yes in the client, no in the server)
+int control_headers_free(control_header* list, int free_fields) {
 	int i=0;
 	control_header* previous_head;
 	while (list!=NULL) {
-		free_control_header(list);
+		if (free_fields) {
+			free_control_header(list);
+		}
 		previous_head = list;
 		list = list->next;
 		free(previous_head);

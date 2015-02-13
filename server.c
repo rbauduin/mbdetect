@@ -89,6 +89,17 @@ void end_content(struct mg_connection * conn,crypto_hash_sha256_state *body_stat
 	free(sha);
 }
 
+// returns 1 if the sha from the state is the same as the HEADER_HEADERS_HASH
+// value found in headers
+// returns 0 otherwise
+int validate_headers_sha(char sha[crypto_hash_sha256_BYTES*2+1] , control_header *headers) {
+	// the sha computed by the client of headers it sent us
+	char *received_sha;
+	get_header_value(headers,HEADER_HEADERS_HASH, &received_sha);
+	return (!strncmp( sha, received_sha, crypto_hash_sha256_BYTES*2+1));
+
+}
+
 // send content
 // Will be improved later to save data per experiment
 void send_content(struct mg_connection * conn,char *body) {
@@ -111,19 +122,24 @@ void generate_content(struct mg_connection *conn, char** body) {
 
 	// initialises a body of length 4096
 	//  will be expanded if needed in add_content
+	//  memory is freed after is it sent out to the client
 	*body = (char *) malloc(4096);
 	memset(*body,0,4096);
 	int buffer_size = 4096;
 
-	// line added by mongoose. We might as wel look at a way to set it outself
+	// line added by mongoose. We might as wel look at a way to set it ourself
 	add_sha_headers_content(&headers_state,"HTTP/1.1 200 OK\r\n");
-	set_header(conn, &headers_state, "X-TeSt","WiTnEsS");
 
-	set_header(conn, &headers_state, "X-NH-TEST","test control header");
-	set_header(conn, &headers_state, "X-NH-RETEST","test control header");
+
+	set_header(conn, &headers_state, "X-TeSt","WiTnEsS");
+	set_header(conn, &headers_state, "X-H-TEST","test control header");
+	set_header(conn, &headers_state, "X-H-RETEST","test control header");
 
 	buffer_size = add_content(body, buffer_size, &body_state, "%s\n", "Welcome hehe!");
 	buffer_size = add_content(body, buffer_size, &body_state, "%s\n", mg_get_header(conn, "Host"));
+
+
+
 	printf("---Start of headers---\n");
 	crypto_hash_sha256_state received_headers_state;
 	crypto_hash_sha256_init(&received_headers_state);
@@ -132,36 +148,32 @@ void generate_content(struct mg_connection *conn, char** body) {
 
         for ( i = 0; i < conn->num_headers; i++){
 		printf("%s: %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
-		header = (control_header *) malloc(sizeof(control_header));
-		header->next = NULL;
-		// FIXME : ok to get rid of const qualifier?
-		header->name=(char *)conn->http_headers[i].name;
-		header->value=(char *)conn->http_headers[i].value;
+		
+		// collect header in our control_header list
+		collect_control_header_components(&headers, conn->http_headers[i].name, conn->http_headers[i].value);
 
-		headers = control_headers_prepend(headers, header);
-
+		// add header to the sha computation
 		if (! is_headers_hash_control_header(conn->http_headers[i].name)) {
-			char header_line[1024];
-			memset(header_line,0,sizeof(header_line));
-			snprintf(header_line, 1024,"%s: %s", conn->http_headers[i].name, conn->http_headers[i].value);  
-			add_sha_headers_content(&received_headers_state,header_line);
-			printf("added to hash: %s\n",header_line);
+			add_sha_headers_components(&received_headers_state, conn->http_headers[i].name, conn->http_headers[i].value);	
 		}
-	    buffer_size = add_content(body, buffer_size, &body_state,  "%s : %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
+		// add it to the body
+		buffer_size = add_content(body, buffer_size, &body_state,  "%s : %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
 	}
 	printf("---End of headers---\n");
+
+	
+	// compute sha and compare to value expected
 	char received_headers_sha[crypto_hash_sha256_BYTES*2+1];
 	sha_from_state(&received_headers_state, &received_headers_sha);
-	printf("Received headers sha : %s\n", received_headers_sha);
-	char *received_sha;
-	get_header_value(headers,HEADER_HEADERS_HASH, &received_sha);
-	if (strncmp(received_headers_sha, received_sha, crypto_hash_sha256_BYTES*2+1)) {
-		printf("HEADERS MODIFIED\n");
-		printf("Received headers sha : %s\n", received_headers_sha);
+	if (validate_headers_sha(received_headers_sha, headers)) {
+		printf("HEADERS RECEIVED OK\n");
+		set_header(conn, &headers_state, HEADER_SERVER_RCVD_HEADERS,"1");
 	}
 	else{
-		printf("HEADERS RECEIVED OK\n");
+		printf("HEADERS MODIFIED\n");
+		set_header(conn, &headers_state, HEADER_SERVER_RCVD_HEADERS,"0");
 	}
+
 	// TODO: Add a header sent to client telling if we received the headers correctly
 	
 
@@ -176,6 +188,9 @@ void generate_content(struct mg_connection *conn, char** body) {
 	// add the chunked encoding header set by mongoose
 	add_sha_headers_content(&headers_state, "Transfer-Encoding: chunked\r\n");
 	end_hashed_headers(conn,&headers_state);
+
+	// cleanup
+	control_headers_free(headers, 0);
 
 }
 

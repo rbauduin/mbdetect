@@ -116,6 +116,11 @@ void extract_header(char* contents, char** name, char** value){
 	}
 }
 
+// Check that the headers we got correspond to what was expected:
+// - sha of headers ok
+// - sha of body ok
+// - server received our headers correctly
+// errors are added to the message string
 int validate_http_headers(payload_specs headers_specs, payload_specs body_specs, char (*message)[VALIDATION_MESSAGE_LENGTH]) {
 	// FIXME: Maybe we can make this code more compact somehow
 	int res = validate_header(headers_specs.control_headers, HEADER_HEADERS_HASH, headers_specs.sha);
@@ -139,8 +144,18 @@ int validate_http_headers(payload_specs headers_specs, payload_specs body_specs,
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "transmitted body hash: *%s*\n", headers_h);
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "computed body sha256 :\n*%s*\n", body_specs.sha);
 	}
-	snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "HEADERS VALIDATIONS DONE\n");
+
+	res = validate_header(headers_specs.control_headers, HEADER_SERVER_RCVD_HEADERS, "1");
+	if (!res) {
+		char *headers_h;
+		get_header_value(headers_specs.control_headers, HEADER_HEADERS_HASH, &headers_h);
+		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "SERVER GOT MODIFIED HEADERS!!\n");
+	}
+	//snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "HEADERS VALIDATIONS DONE\n");
 }
+
+
+// Check that the headers with header_name has the expected value
 int validate_header(control_header *list, char* header_name, char* expected_value) {
 	char* header_value=NULL;
 	if (list==NULL || expected_value==NULL || header_name==NULL){
@@ -155,7 +170,7 @@ int validate_header(control_header *list, char* header_name, char* expected_valu
 
 
 // add an entry in the control_headers linked list of the payload spec
-void store_control_header(char* contents, payload_specs *specs) {
+void store_control_header(char* contents, control_header **list) {
 	// name and value of the header
 	char* name; char* value;
 	
@@ -166,31 +181,27 @@ void store_control_header(char* contents, payload_specs *specs) {
 
 	// add it to the linked list
 	if (header->name!=NULL) {
-			specs->control_headers = control_headers_prepend(specs->control_headers, header);
+			*list = control_headers_prepend(*list, header);
 	}
 	else
 	{
 		free_control_header(header);
 		free(header);
 	}
-
-
 }
 
-void handle_header(char* contents, size_t size, size_t nmemb, payload_specs *specs){
-	  if (! is_empty_line(contents)) {
-		  if (!is_empty_line(contents)){
-			  if (is_http_status_header(contents)) {
-				  crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
-			  }
-			  else {
-				  store_control_header(contents,specs);
-				  if (!is_headers_hash_control_header(contents)) {
-					  crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
-				  }
-			  }
-		  }
-	  }
+// Works on one header line:
+// - adds it to the headers sha computation (except if it is the header containing the expect sha value) 
+// - stores it in the collected headers (except if it is the http status line)
+void process_header(char* contents, size_t size, size_t nmemb, payload_specs *specs){
+	if (!is_empty_line(contents)){
+		if (!is_headers_hash_control_header(contents)){
+			crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
+		}
+		if (!is_http_status_header(contents)) {
+			store_control_header(contents,&(specs->control_headers));
+		}
+	}
 }
 
 // callback discarding data, HTTP VERSION
@@ -201,7 +212,7 @@ static size_t discard_data_http(void *contents, size_t size, size_t nmemb, paylo
 	// for headers only complete lines are passed
 	// if this is a control header, store it
 	if (specs->type == 'H') {
-		handle_header(contents, size, nmemb, specs);
+		process_header(contents, size, nmemb, specs);
 	}
 	else{
 		crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
@@ -225,7 +236,7 @@ write_in_file_http(void *contents, size_t size, size_t nmemb, payload_specs *spe
 	// for headers only complete lines are passed.
 	// control headers are stored and added to the hash value
 	if (specs->type == 'H') {
-		handle_header(contents,size, nmemb,  specs);
+		process_header(contents,size, nmemb,  specs);
 	}
 	else{
 		crypto_hash_sha256_update(&(specs->sha_state), contents, size*nmemb);
@@ -458,37 +469,41 @@ int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers){
 	// get headers from config file
 	config_setting_t *cfg_headers = config_setting_get_member(test, "headers");
 	//FIXME: if no header specified, need account for default headers by curl
-	if (cfg_headers==NULL)
-		return CURLE_OK;
-	// iterate over the list of header strings and add each to the curl_slist *headers
-	headers_count = config_setting_length(cfg_headers);
-	for (j=0; j<headers_count; j++){
-		header=config_setting_get_string_elem(cfg_headers,j);
-		add_sha_headers_content(&headers_state,header);
-		headers = curl_slist_append(headers, header); 
-		// record if we have set the host header
-		if (!strncasecmp(header,"host: ", 6)) {
-			host_set = 1;
+	if (cfg_headers!=NULL){
+		// iterate over the list of header strings and add each to the curl_slist *headers
+		headers_count = config_setting_length(cfg_headers);
+		for (j=0; j<headers_count; j++){
+			header=config_setting_get_string_elem(cfg_headers,j);
+			add_sha_headers_content(&headers_state,header);
+			headers = curl_slist_append(headers, header); 
+			// record if we have set the host header
+			if (!strncasecmp(header,"host: ", 6)) {
+				host_set = 1;
+			}
+			if (!strncasecmp(header,"accept: ", 8)) {
+				accept_set = 1;
+			}
+			fwrite(header, strlen(header), 1, f);
 		}
-		if (!strncasecmp(header,"accept: ", 8)) {
-			accept_set = 1;
-		}
-		fwrite(header, strlen(header), 1, f);
 	}
 
-	// set a host header if not already set
-	if (!host_set){
-		char host_header[1024];
-		get_host_header(curl, &host_header);
-		headers = curl_slist_append(headers, host_header); 
-		add_sha_headers_content(&headers_state,host_header);
-		fwrite(host_header, strlen(host_header), 1, f);
-	}
-	if (!accept_set){
-		char accept_header[1024]="Accept: */*";
-		headers = curl_slist_append(headers, accept_header); 
-		add_sha_headers_content(&headers_state,accept_header);
-		fwrite(accept_header, strlen(accept_header), 1, f);
+	// set a host header and an accept header if not already set
+	// if we do not set it here, curl adds it itself which screws our sha computation
+	// If we want to delete the header, we can with setting the header to "Accept:"
+	if (is_protocol(curl,"http://")){
+		if (!host_set){
+			char host_header[1024];
+			get_host_header(curl, &host_header);
+			headers = curl_slist_append(headers, host_header); 
+			add_sha_headers_content(&headers_state,host_header);
+			fwrite(host_header, strlen(host_header), 1, f);
+		}
+		if (!accept_set){
+			char accept_header[1024]="Accept: */*";
+			headers = curl_slist_append(headers, accept_header); 
+			add_sha_headers_content(&headers_state,accept_header);
+			fwrite(accept_header, strlen(accept_header), 1, f);
+		}
 	}
 	fclose(f);
 	// sha string
@@ -520,6 +535,10 @@ int is_protocol(CURL* curl, char* protocol) {
 	}
 }
 
+// Extracts the host part of an http url
+// drops the http:// protocol part, and reads the host 
+// until the fist / or the end of the string
+// returns a null string if not http
 int host_from_curl(CURL *curl,char (*host)[1024] ){
 	int start, length, i;
 	memset(host,0,1024);
@@ -532,16 +551,21 @@ int host_from_curl(CURL *curl,char (*host)[1024] ){
 			i++;
 		length=i-start;
 		strncpy(*host, url+7, length);
-		printf("HOST=%s\n", *host);
 	}
 }
 
+// Builds the HTTP Host: header line from the url held by curl
+// Returns empty string if no host extracted from curl
 int get_host_header(CURL* curl, char (*host_header)[1024]){
 	char host[1024];
+	// get host fomr curl's url
 	host_from_curl(curl, &host);
+	// empty destination string
 	memset(*host_header,0,sizeof(host_header));
-	snprintf(*host_header, min(strlen(host)+7, sizeof(*host_header)),"Host: %s", host);  
-	printf("Setting host header= %s \n", *host_header);
+	// copy into destination string if host was found
+	if (strlen(host)>0){
+		snprintf(*host_header, min(strlen(host)+7, sizeof(*host_header)),"Host: %s", host);  
+	}
 }
 
 // determines the callbacks to be called according to the protocol, 
@@ -649,7 +673,7 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 // cleans things up when curl query is done. 
 void clean_output(config_setting_t *test, payload_specs *headers_specs,payload_specs  *body_specs ){
 	// control headers are awlays collected, free them
-	control_headers_free(headers_specs->control_headers);
+	control_headers_free(headers_specs->control_headers, 1);
 	
 	// if there was output written to a file, clean stuff
 	config_setting_t *output_file = config_setting_get_member(test, "output_file");
@@ -812,7 +836,6 @@ int main(int argc, char *argv[])
 						    printf("%s", message);
 					    }
 					    else {
-						    printf("SUCCESS!\n");
 						    printf("%s", message);
 					    }
 				    }
