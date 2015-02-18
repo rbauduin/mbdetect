@@ -2662,17 +2662,13 @@ void mg_send_header(struct mg_connection *c, const char *name, const char *v) {
   mg_printf(c, "%s: %s\r\n", name, v);
 }
 
-void terminate_headers(struct mg_connection *c) {
+static void terminate_headers(struct mg_connection *c) {
   struct connection *conn = MG_CONN_2_CONN(c);
   if (!(conn->ns_conn->flags & MG_HEADERS_SENT)) {
-    mg_write(c, "Transfer-Encoding: chunked\r\n", 28);
+    mg_send_header(c, "Transfer-Encoding", "chunked");
     mg_write(c, "\r\n", 2);
     conn->ns_conn->flags |= MG_HEADERS_SENT;
   }
-}
-void th(struct mg_connection *c) {
-  struct connection *conn = MG_CONN_2_CONN(c);
-  conn->ns_conn->flags |= MG_HEADERS_SENT;
 }
 
 size_t mg_send_data(struct mg_connection *c, const void *data, int data_len) {
@@ -5558,10 +5554,7 @@ int send_404_with_hash(struct mg_connection *mg_conn) {
 // Will be improved later to save data per experiment
 void send_content(struct mg_connection * conn,char *body) {
   struct connection *c = MG_CONN_2_CONN(conn);
-  	printf("-----\nSENDING CONTENT:\n%s", body);
-    	//mg_printf(conn, "%s", body);
-	//
-	ns_out(c->ns_conn, body, strlen(body));
+	mg_write(conn, body, strlen(body));
 	//printf("size of body : %d\n",(int)strlen(body));
 	//FILE* f=fopen("/tmp/body","w");
 	//fwrite(body,strlen(body),1,f);
@@ -5569,11 +5562,12 @@ void send_content(struct mg_connection * conn,char *body) {
 }
 
 void send_response(struct mg_connection *conn, char *headers, char *body) {
+  struct connection *c = MG_CONN_2_CONN(conn);
 		send_content(conn, "HTTP/1.1 200 OK\r\n");
 		send_content(conn, headers);
 		mg_write(conn, "Transfer-Encoding: chunked\r\n", 28);
 		mg_write(conn, "\r\n", 2);
-		th(conn);
+		c->ns_conn->flags |= MG_HEADERS_SENT;
 		mg_printf_data(conn, body, strlen(body));
 		free(headers);
 		free(body);
