@@ -5561,11 +5561,14 @@ void send_content(struct mg_connection * conn,char *body) {
 	//fclose(f);
 }
 
+// send response to client. 
+// All headers and the complete body have to be provided
+// The empty line separating headers from body is added by the function
 void send_response(struct mg_connection *conn, char *headers, char *body) {
   struct connection *c = MG_CONN_2_CONN(conn);
-		send_content(conn, "HTTP/1.1 200 OK\r\n");
+		//send_content(conn, "HTTP/1.1 200 OK\r\n");
 		send_content(conn, headers);
-		mg_write(conn, "Transfer-Encoding: chunked\r\n", 28);
+		//mg_write(conn, "Transfer-Encoding: chunked\r\n", 28);
 		mg_write(conn, "\r\n", 2);
 		c->ns_conn->flags |= MG_HEADERS_SENT;
 		mg_printf_data(conn, body, strlen(body));
