@@ -5287,6 +5287,62 @@ struct mg_server *mg_create_server(void *server_data, mg_handler_t handler) {
   server->event_handler = handler;
   return server;
 }
+//******************************************************************************
+//  MBD CODE CHANGES BELOW
+//******************************************************************************
+
+// iterated over all received headers
+// collects them in the headers linked list
+// and stores the sha of the headers in the third arg
+int handle_received_headers(struct mg_connection *conn, control_header **headers,char (*sha)[crypto_hash_sha256_BYTES*2+1]){
+	// iteration index variable
+	int i;
+	crypto_hash_sha256_state received_headers_state;
+	crypto_hash_sha256_init(&received_headers_state);
+	control_header *header;
+
+        for ( i = 0; i < conn->num_headers; i++){
+		printf("%s: %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
+		
+		// collect header in our control_header list
+		collect_control_header_components(headers, conn->http_headers[i].name, conn->http_headers[i].value);
+
+		// add header to the sha computation
+		if (! is_headers_hash_control_header(conn->http_headers[i].name)) {
+			add_sha_headers_components(&received_headers_state, conn->http_headers[i].name, conn->http_headers[i].value);	
+		}
+		// add it to the body
+		// FIXME: to be placed in another function that will loop over headers
+		//buffer_size = add_content(body, buffer_size, &body_state,  "%s : %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
+	}
+	
+	// compute sha and compare to value expected
+	sha_from_state(&received_headers_state, sha);
+
+
+}
+// returns 1 if the sha from the state is the same as the HEADER_HEADERS_HASH
+// value found in headers
+// returns 0 otherwise
+int validate_headers_sha(char sha[crypto_hash_sha256_BYTES*2+1] , control_header *headers) {
+	// the sha computed by the client of headers it sent us
+	char *received_sha;
+	get_header_value(headers,HEADER_HEADERS_HASH, &received_sha);
+	if (received_sha==NULL) {
+		return 0;
+	}
+	printf("RECEIVED : %s\nCOMPUTED: %s\n", received_sha, sha);
+	// explicitely set return value as this is used as the HEADER_SERVER_RCVD_HEADERS value
+	if (!strncmp( sha, received_sha, crypto_hash_sha256_BYTES*2+1)) {
+		printf("returning 1\n");
+		return 1;
+	}
+	else {
+		printf("returning 0\n");
+		return 0;
+	}
+
+}
 
 // modified version of open_file_endpoint to include headers in hash
 // changes are at the end, when headers are sent (we add control hash headers)
@@ -5393,18 +5449,30 @@ int mbd_deliver_file(struct mg_connection *mg_conn) {
 	// header line containing the body hash
 	// +sizeof(HEADER_BODY_HASH): acccount for header name 
 	// +2 for ": " separator
-	char body_hash_header[crypto_hash_sha256_BYTES*2+1+sizeof(HEADER_BODY_HASH)+2];
+	// +2: \r\n
+	// +sizeof(HEADER_SERVER_RCVD_HEADERS) : headername
+	// +3: ": " + the value 0 or 1
+	char body_hash_header[crypto_hash_sha256_BYTES*2+1+sizeof(HEADER_BODY_HASH)+2 +2 +sizeof(HEADER_SERVER_RCVD_HEADERS)+3];
 
 	exists = convert_uri_to_file_name(conn, path, sizeof(path), &st);
 	if (!exists) {
 		send_http_error(conn, 404, NULL);
 	}
 	else {
+		char received_headers_sha[crypto_hash_sha256_BYTES*2+1];
+		control_header *received_headers=NULL;
+		// collect headers and compute the sha
+		handle_received_headers(&(conn->mg_conn), &received_headers,&received_headers_sha); 
+
 		// send file with its computed hash in an extra header
 		file_hash(path, &sha);
+
 		int n = mg_snprintf(body_hash_header, sizeof(body_hash_header),
-				HEADER_BODY_HASH ": %s",
-				sha);
+				HEADER_BODY_HASH ": %s\r\n"
+				HEADER_SERVER_RCVD_HEADERS ": %d"
+				,
+				sha, 
+				validate_headers_sha(received_headers_sha, received_headers));
 		conn->endpoint.fd = open(path, O_RDONLY | O_BINARY, 0);
 		mbd_file_endpoint(conn, path, &st, body_hash_header);
 	}
@@ -5445,3 +5513,4 @@ int send_404_with_hash(struct mg_connection *mg_conn) {
 	ns_send(conn->ns_conn, headers, headers_len);
 	ns_send(conn->ns_conn, body, body_len);
 }
+

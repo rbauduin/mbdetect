@@ -7,6 +7,10 @@
 #define MAX_HEADER_VALUE_SIZE 512
 #define MAX_HEADER_SIZE 1024
 #define NOT_FOUND_BODY "File not found. This is a test server only, with not content available." 
+#define NO_MATCH 0
+#define MATCH 1
+#define HEADER_NOT_FOUND -1
+#define NULL_OPERANDS	-2
 // useful to append to mystring with snprintf(eos(mystring), size-strlen(mystring), fmt, ...)
 #define eos(s) ((s)+strlen(s))
 #define min(a,b) a<b ? a : b

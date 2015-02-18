@@ -128,7 +128,10 @@ int validate_http_headers(payload_specs headers_specs, payload_specs body_specs,
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "HEADERS SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n");
 				return 0;
 	} 
-	if (!res) {
+	if (res==HEADER_NOT_FOUND){
+		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "Headers %s not found!!\n", HEADER_HEADERS_HASH);
+	}
+	else if (!res) {
 		char *headers_h;
 		get_header_value(headers_specs.control_headers, HEADER_HEADERS_HASH, &headers_h);
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "DIFFERENT SHA, headers modified!!\n");
@@ -137,7 +140,10 @@ int validate_http_headers(payload_specs headers_specs, payload_specs body_specs,
 	}
 
 	res = validate_header(headers_specs.control_headers, HEADER_BODY_HASH, body_specs.sha);
-	if (!res) {
+	if (res==HEADER_NOT_FOUND){
+		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "Headers %s not found!!\n", HEADER_BODY_HASH);
+	}
+	else if (!res) {
 		char *headers_h;
 		get_header_value(headers_specs.control_headers, HEADER_HEADERS_HASH, &headers_h);
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "DIFFERENT SHA, BODY modified!!\n");
@@ -146,9 +152,10 @@ int validate_http_headers(payload_specs headers_specs, payload_specs body_specs,
 	}
 
 	res = validate_header(headers_specs.control_headers, HEADER_SERVER_RCVD_HEADERS, "1");
-	if (!res) {
-		char *headers_h;
-		get_header_value(headers_specs.control_headers, HEADER_HEADERS_HASH, &headers_h);
+	if (res==HEADER_NOT_FOUND){
+		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "Headers %s not found!!\n", HEADER_SERVER_RCVD_HEADERS);
+	}
+	else if (res==NO_MATCH) {
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "SERVER GOT MODIFIED HEADERS!!\n");
 	}
 	//snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "HEADERS VALIDATIONS DONE\n");
@@ -159,13 +166,19 @@ int validate_http_headers(payload_specs headers_specs, payload_specs body_specs,
 int validate_header(control_header *list, char* header_name, char* expected_value) {
 	char* header_value=NULL;
 	if (list==NULL || expected_value==NULL || header_name==NULL){
-		return 0;
+		printf("null values\n");
+		return NULL_OPERANDS;
 	}
 	get_header_value(list, header_name, &header_value);
 	if (header_value==NULL) {
-		return -1;
+		return HEADER_NOT_FOUND;
 	}
-	return !strcmp(expected_value,header_value);
+	if (!strcmp(expected_value,header_value)) {
+		return MATCH;
+	}
+	else {
+		return NO_MATCH;
+	}
 }
 
 
