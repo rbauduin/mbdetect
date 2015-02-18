@@ -315,7 +315,7 @@ int perform_validation(CURL *curl,config_setting_t* entry, char (*message)[2048]
 		case CONFIG_TYPE_FLOAT:
 			curl_easy_getinfo(curl, m.code, &(actual.fval));
 			if (res = (value_entry->value.fval == actual.fval)) {
-				snprintf(*message, VALIDATION_MESSAGE_LENGTH, "PASS, %s = %f\n", name_str, actual.fval);
+				//snprintf(*message, VALIDATION_MESSAGE_LENGTH, "PASS, %s = %f\n", name_str, actual.fval);
 			}
 			else {
 				snprintf(*message, VALIDATION_MESSAGE_LENGTH, "FAIL, %s expected %f but is %f\n", name_str, value_entry->value.fval, actual.fval);
@@ -324,7 +324,7 @@ int perform_validation(CURL *curl,config_setting_t* entry, char (*message)[2048]
 		case CONFIG_TYPE_INT:
 			curl_easy_getinfo(curl, m.code, &(actual.ival));
 			if (res = (value_entry->value.ival == actual.ival)) {
-				snprintf(*message, VALIDATION_MESSAGE_LENGTH, "PASS, %s = %d\n", name_str, actual.ival);
+				//snprintf(*message, VALIDATION_MESSAGE_LENGTH, "PASS, %s = %d\n", name_str, actual.ival);
 			}
 			else {
 				snprintf(*message, VALIDATION_MESSAGE_LENGTH, "FAIL, %s expected %d but is %d\n", name_str, value_entry->value.ival, actual.ival);
@@ -333,7 +333,7 @@ int perform_validation(CURL *curl,config_setting_t* entry, char (*message)[2048]
 		case CONFIG_TYPE_INT64:
 			curl_easy_getinfo(curl, m.code, &(actual.llval));
 			if (res = (value_entry->value.llval == actual.llval)) {
-				snprintf(*message, VALIDATION_MESSAGE_LENGTH, "PASS, %s = %lld\n", name_str, actual.llval);
+				//snprintf(*message, VALIDATION_MESSAGE_LENGTH, "PASS, %s = %lld\n", name_str, actual.llval);
 			}
 			else {
 				snprintf(*message, VALIDATION_MESSAGE_LENGTH, "FAIL, %s expected %lld but is %lld\n", name_str, value_entry->value.llval, actual.llval);
@@ -342,7 +342,7 @@ int perform_validation(CURL *curl,config_setting_t* entry, char (*message)[2048]
 		case CONFIG_TYPE_STRING:
 			curl_easy_getinfo(curl, m.code, &(actual.sval));
 			if (res = (!strcmp(value_entry->value.sval,actual.sval))) {
-				snprintf(*message, VALIDATION_MESSAGE_LENGTH, "PASS, %s = %s\n", name_str, actual.sval);
+				//snprintf(*message, VALIDATION_MESSAGE_LENGTH, "PASS, %s = %s\n", name_str, actual.sval);
 			}
 			else {
 				snprintf(*message, VALIDATION_MESSAGE_LENGTH, "FAIL, %s expected %s but is %s\n", name_str, value_entry->value.sval, actual.sval);
@@ -858,7 +858,7 @@ int main(int argc, char *argv[])
 				    // extract validations for the query
 				    validations = config_setting_get_member(query, "validations");
 				    if (validations != NULL) {
-					    printf("Performing validations\n");
+					    //printf("Performing validations\n");
 					    validations_count = config_setting_length(validations);
 					    // iterate over validation of this query
 					    for(m=0;m<validations_count;m++){
