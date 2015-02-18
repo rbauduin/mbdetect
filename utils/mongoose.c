@@ -2670,6 +2670,10 @@ void terminate_headers(struct mg_connection *c) {
     conn->ns_conn->flags |= MG_HEADERS_SENT;
   }
 }
+void th(struct mg_connection *c) {
+  struct connection *conn = MG_CONN_2_CONN(c);
+  conn->ns_conn->flags |= MG_HEADERS_SENT;
+}
 
 size_t mg_send_data(struct mg_connection *c, const void *data, int data_len) {
   struct connection *conn = MG_CONN_2_CONN(c);
@@ -5564,3 +5568,13 @@ void send_content(struct mg_connection * conn,char *body) {
 	//fclose(f);
 }
 
+void send_response(struct mg_connection *conn, char *headers, char *body) {
+		send_content(conn, "HTTP/1.1 200 OK\r\n");
+		send_content(conn, headers);
+		mg_write(conn, "Transfer-Encoding: chunked\r\n", 28);
+		mg_write(conn, "\r\n", 2);
+		th(conn);
+		mg_printf_data(conn, body, strlen(body));
+		free(headers);
+		free(body);
+}

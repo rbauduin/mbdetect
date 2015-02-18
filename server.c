@@ -241,16 +241,7 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
         if (!strcmp(conn->uri, "/")) {
 		char *body, *headers;
 		generate_content(conn, &headers, &body);
-		send_content(conn, "HTTP/1.1 200 OK\r\n");
-		send_content(conn, headers);
-		//send_content(conn, "Transfer-Encoding: chunked\r\n");
-		//send_content(conn, "\r\n");
-		//terminate_headers(conn);
-    //mg_write(c, "Transfer-Encoding: chunked\r\n", 28);
-    //mg_write(c, "\r\n", 2);
-		mg_printf_data(conn, body, strlen(body));
-		free(headers);
-		free(body);
+		send_response(conn, headers, body);
 		return MG_TRUE;
 	}
 
