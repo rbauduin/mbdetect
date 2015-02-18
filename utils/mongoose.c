@@ -5489,10 +5489,16 @@ int send_404_with_hash(struct mg_connection *mg_conn) {
 	char headers[1024], body[200];
 	char body_sha[crypto_hash_sha256_BYTES*2+1], headers_sha[crypto_hash_sha256_BYTES*2+1];
 	int headers_len, body_len;
+	// sha of received headers
+	char received_headers_sha[crypto_hash_sha256_BYTES*2+1];
+	// linked list of received headers
+	control_header *received_headers=NULL;
 
 	// set connection status
 	mg_conn->status_code = 404;
 
+	// collect request headers and compute the sha
+	handle_received_headers(mg_conn, &received_headers,&received_headers_sha); 
 
 	// build the body and compute its sha
 	body_len = mg_snprintf(body, sizeof(body),
@@ -5503,8 +5509,11 @@ int send_404_with_hash(struct mg_connection *mg_conn) {
 	// build the hashed headers and compute the sha
 	headers_len = mg_snprintf(headers, sizeof(headers),
 			"HTTP/1.1 404 NOT FOUND\r\nContent-Length: %d\r\n"
-			"Content-Type: text/plain\r\n",
-			body_len);
+			"Content-Type: text/plain\r\n"
+			HEADER_SERVER_RCVD_HEADERS ": %d\r\n"
+			,
+			body_len,
+			validate_headers_sha(received_headers_sha, received_headers));
 	headers_len += mg_snprintf(eos(headers), sizeof(headers)-strlen(headers),
 			HEADER_BODY_HASH ": %s\r\n", body_sha);
 

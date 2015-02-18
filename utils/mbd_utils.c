@@ -75,7 +75,6 @@ void add_sha_headers_components(crypto_hash_sha256_state *received_headers_state
 	memset(header_line,0,sizeof(header_line));
 	snprintf(header_line, 1024,"%s: %s", name, value);  
 	add_sha_headers_content(received_headers_state,header_line);
-	printf("added to hash: %s\n",header_line);
 }
 
 // add a control header entry in the linked list
