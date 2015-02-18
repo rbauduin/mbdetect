@@ -5302,7 +5302,7 @@ int handle_received_headers(struct mg_connection *conn, control_header **headers
 	control_header *header;
 
         for ( i = 0; i < conn->num_headers; i++){
-		printf("%s: %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
+		//printf("%s: %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
 		
 		// collect header in our control_header list
 		collect_control_header_components(headers, conn->http_headers[i].name, conn->http_headers[i].value);
@@ -5318,11 +5318,9 @@ int handle_received_headers(struct mg_connection *conn, control_header **headers
 	
 	// compute sha and compare to value expected
 	sha_from_state(&received_headers_state, sha);
-
-
 }
-// returns 1 if the sha from the state is the same as the HEADER_HEADERS_HASH
-// value found in headers
+
+// returns 1 if the sha from the state is the same as the HEADER_HEADERS_HASH value found in headers
 // returns 0 otherwise
 int validate_headers_sha(char sha[crypto_hash_sha256_BYTES*2+1] , control_header *headers) {
 	// the sha computed by the client of headers it sent us
@@ -5331,14 +5329,11 @@ int validate_headers_sha(char sha[crypto_hash_sha256_BYTES*2+1] , control_header
 	if (received_sha==NULL) {
 		return 0;
 	}
-	printf("RECEIVED : %s\nCOMPUTED: %s\n", received_sha, sha);
 	// explicitely set return value as this is used as the HEADER_SERVER_RCVD_HEADERS value
 	if (!strncmp( sha, received_sha, crypto_hash_sha256_BYTES*2+1)) {
-		printf("returning 1\n");
 		return 1;
 	}
 	else {
-		printf("returning 0\n");
 		return 0;
 	}
 
@@ -5447,34 +5442,44 @@ int mbd_deliver_file(struct mg_connection *mg_conn) {
 	// sha of file to be delivered
 	char sha[crypto_hash_sha256_BYTES*2+1];
 	// header line containing the body hash
+	// crypto_hash_sha256_BYTES*2 = size of the computed sha
+	// +1: \0
 	// +sizeof(HEADER_BODY_HASH): acccount for header name 
 	// +2 for ": " separator
 	// +2: \r\n
 	// +sizeof(HEADER_SERVER_RCVD_HEADERS) : headername
 	// +3: ": " + the value 0 or 1
-	char body_hash_header[crypto_hash_sha256_BYTES*2+1+sizeof(HEADER_BODY_HASH)+2 +2 +sizeof(HEADER_SERVER_RCVD_HEADERS)+3];
+	char additional_headers[crypto_hash_sha256_BYTES*2+1+sizeof(HEADER_BODY_HASH)+2 +2 +sizeof(HEADER_SERVER_RCVD_HEADERS)+3];
 
 	exists = convert_uri_to_file_name(conn, path, sizeof(path), &st);
 	if (!exists) {
 		send_http_error(conn, 404, NULL);
 	}
 	else {
+		// sha of received headers
 		char received_headers_sha[crypto_hash_sha256_BYTES*2+1];
+		// linked list of received headers
 		control_header *received_headers=NULL;
+		
 		// collect headers and compute the sha
 		handle_received_headers(&(conn->mg_conn), &received_headers,&received_headers_sha); 
 
-		// send file with its computed hash in an extra header
+		// compute the sha of the file to be sent
 		file_hash(path, &sha);
 
-		int n = mg_snprintf(body_hash_header, sizeof(body_hash_header),
+		// build the additional headers:
+		// - the body hash
+		// - indication if client headers received unmodified
+		int n = mg_snprintf(additional_headers, sizeof(additional_headers),
 				HEADER_BODY_HASH ": %s\r\n"
 				HEADER_SERVER_RCVD_HEADERS ": %d"
 				,
 				sha, 
 				validate_headers_sha(received_headers_sha, received_headers));
+		// setup the fd for mongoose
 		conn->endpoint.fd = open(path, O_RDONLY | O_BINARY, 0);
-		mbd_file_endpoint(conn, path, &st, body_hash_header);
+		// send the file
+		mbd_file_endpoint(conn, path, &st, additional_headers);
 	}
 }
 
