@@ -4,8 +4,8 @@
 - collect data of the run on client and server. Add log function
 - error handling
 - collect the payload_specs of the subsequent repetition of a query in a linked list
-- add control of headers in server code sending 404
 
 
+- add control of headers in server code sending 404 [DONE]
 - generate control headers with 404 response [DONE]
 - compare actual to expected values, and control headers values [DONE]

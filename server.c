@@ -11,10 +11,15 @@
 
 
 // set a header, only for content we generate ourself, not for use when serving files!
-void set_header(struct mg_connection *conn,crypto_hash_sha256_state *state, char *name, char *value) {
+int set_header(char **acc, int buffer_size, crypto_hash_sha256_state *state, char *name, char *value) {
 	char *header;
-	int header_len;
-	mg_send_header(conn, name,value);
+	int header_len, new_buffer_size;
+	//mg_send_header(conn, name,value);
+	char addition[MAX_HEADER_SIZE];
+	snprintf(addition, MAX_HEADER_SIZE, "%s: %s\r\n", name, value);
+	int new_size = strlen(*acc) + strlen(addition) + 1;
+
+	new_buffer_size = append_to_buffer(acc, buffer_size, addition);
 
 	// if this is not a control header, add it to the headers hash computation
 	if (! is_headers_hash_control_header(name)) {
@@ -31,18 +36,35 @@ void set_header(struct mg_connection *conn,crypto_hash_sha256_state *state, char
 		free(header);
 	}
 	else
-		printf("NOT hashing HEADER %s\n", header);
+		printf("NOT hashing HEADER\n");
 }
 
 // add the chunked encoding header to the sha computation 
 // and send the sha256 value as a last header
 // for use only when we generate the content ourself
-void end_hashed_headers(struct mg_connection *conn, crypto_hash_sha256_state *state) {
+int end_hashed_headers(char **acc, int buffer_size, crypto_hash_sha256_state *state) {
 	// string representation of the sha256
 	char sha[crypto_hash_sha256_BYTES*2+1];
 	// finalise sha computation and send the header
 	sha_from_state(state,&sha);
-	mg_send_header(conn, HEADER_HEADERS_HASH ,sha);
+	return set_header(acc, buffer_size, state, HEADER_HEADERS_HASH ,sha);
+}
+
+int  append_to_buffer(char **acc, int buffer_size, char* addition){
+  int new_size = strlen(*acc) + strlen(addition) + 1;
+  //check if new string fits in buffer
+  // +1 : \0
+  if ( new_size > buffer_size) {
+	  // if we grow, grow 2 times what's needed
+	  buffer_size=new_size*2;
+	  *acc = (char *) realloc(*acc, buffer_size);
+	  if (*acc==NULL) {
+		  return -1;
+	  }
+  }
+  // append content to the accumulator
+  strlcat(*acc,addition);
+  return buffer_size;
 }
 
 // heavily inspired by mongoose mg_printf_data
@@ -55,26 +77,14 @@ size_t add_content(char **acc, int buffer_size, crypto_hash_sha256_state *state,
   va_start(ap, fmt);
   len = ns_avprintf(&addition, strlen(addition), fmt, ap);
   va_end(ap);
-  //check if new string fits in buffer
-  // +1 : \0
-  int new_size = strlen(*acc) + strlen(addition) + 1;
-  if ( new_size > buffer_size) {
-	  // if we grow, grow 4 times what's needed
-	  buffer_size=new_size*4;
-	  *acc = (char *) realloc(*acc, buffer_size);
-	  if (*acc==NULL) {
-		  return -1;
-	  }
-  }
-  // append content to the accumulator
-  strlcat(*acc,addition);
+  buffer_size = append_to_buffer(acc, buffer_size,  addition);
   // update body hash
   crypto_hash_sha256_update(state, addition, strlen(addition));
   return buffer_size;
 }
 
 // compute the body hash and send it in a header
-void end_content(struct mg_connection * conn,crypto_hash_sha256_state *body_state, crypto_hash_sha256_state *headers_state) {
+void end_content(char **headers,int headers_buffer_size, crypto_hash_sha256_state *body_state, crypto_hash_sha256_state *headers_state) {
 	// the sha256 result
 	unsigned char out[crypto_hash_sha256_BYTES];
 	// string representation of the sha256
@@ -85,21 +95,12 @@ void end_content(struct mg_connection * conn,crypto_hash_sha256_state *body_stat
 	sha=malloc(sizeof(out)*2+1);
 	sodium_bin2hex(sha, sizeof(out)*2+1, out, sizeof(out));
 
-	set_header(conn, headers_state, HEADER_BODY_HASH,sha);
+	set_header(headers, headers_buffer_size, headers_state, HEADER_BODY_HASH,sha);
 	free(sha);
 }
 
-// send content
-// Will be improved later to save data per experiment
-void send_content(struct mg_connection * conn,char *body) {
-    	mg_printf_data(conn, "%s", body);
-	//printf("size of body : %d\n",(int)strlen(body));
-	//FILE* f=fopen("/tmp/body","w");
-	//fwrite(body,strlen(body),1,f);
-	//fclose(f);
-}
 
-void generate_content(struct mg_connection *conn, char** body) {
+int generate_fixed_content(char **headers , char** body) {
 	// loop index
 	int i;
 	// sha state for headers and body
@@ -116,33 +117,79 @@ void generate_content(struct mg_connection *conn, char** body) {
 	memset(*body,0,4096);
 	int buffer_size = 4096;
 
+	*headers = (char *) malloc(4096);
+	memset(*headers,0,4096);
+	int headers_buffer_size = 4096;
+
+
 	// line added by mongoose. We might as wel look at a way to set it ourself
 	add_sha_headers_content(&headers_state,"HTTP/1.1 200 OK\r\n");
 
 
-	set_header(conn, &headers_state, "X-TeSt","WiTnEsS");
-	set_header(conn, &headers_state, "X-H-TEST","test control header");
-	set_header(conn, &headers_state, "X-H-RETEST","test control header");
+	headers_buffer_size = set_header(headers, headers_buffer_size, &headers_state, "X-TeSt","WiTnEsS");
+	headers_buffer_size = set_header(headers, headers_buffer_size, &headers_state, "X-H-TEST","test control header");
+	headers_buffer_size = set_header(headers, headers_buffer_size, &headers_state, "X-H-RETEST","test control header");
 
 	buffer_size = add_content(body, buffer_size, &body_state, "%s\n", "Welcome hehe!");
-	buffer_size = add_content(body, buffer_size, &body_state, "%s\n", mg_get_header(conn, "Host"));
+
+
+	set_header(headers, headers_buffer_size, &headers_state, HEADER_SERVER_RCVD_HEADERS, "0"  );
+	buffer_size = add_content(body, buffer_size, &body_state, "%s\n", "Bye hehe!");
+
+	end_content(headers, headers_buffer_size, &body_state, &headers_state);
+	// add the chunked encoding header set by mongoose
+	add_sha_headers_content(&headers_state, "Transfer-Encoding: chunked\r\n");
+	return end_hashed_headers(headers, headers_buffer_size,&headers_state);
+
+
+}
+
+
+void generate_content(struct mg_connection *conn, char** headers, char** body) {
+	// loop index
+	int i;
+	// sha state for headers and body
+	crypto_hash_sha256_state headers_state, body_state;
+
+	// we immediately initialise the body state
+	crypto_hash_sha256_init(&body_state);
+	crypto_hash_sha256_init(&headers_state);
+
+	// initialises a body of length 4096
+	//  will be expanded if needed in add_content
+	//  memory is freed after is it sent out to the client
+	*body = (char *) malloc(4096);
+	memset(*body,0,4096);
+	int buffer_size = 4096;
+
+	*headers = (char *) malloc(4096);
+	memset(*headers,0,4096);
+	int headers_buffer_size = 4096;
+
+
+	// line added by mongoose. We might as wel look at a way to set it ourself
+	add_sha_headers_content(&headers_state,"HTTP/1.1 200 OK\r\n");
+
+
+	headers_buffer_size = set_header(headers, headers_buffer_size, &headers_state, "X-TeSt","WiTnEsS");
+	headers_buffer_size = set_header(headers, headers_buffer_size, &headers_state, "X-H-TEST","test control header");
+	headers_buffer_size = set_header(headers, headers_buffer_size, &headers_state, "X-H-RETEST","test control header");
+
+	buffer_size = add_content(body, buffer_size, &body_state, "%s\n", "Welcome hehe!");
+	//buffer_size = add_content(body, buffer_size, &body_state, "%s\n", mg_get_header(conn, "Host"));
 
 
 
 	char received_headers_sha[crypto_hash_sha256_BYTES*2+1];
-	control_header *headers=NULL;
+	control_header *received_headers=NULL;
 	// collect headers and compute the sha
-	handle_received_headers(conn, &headers,&received_headers_sha); 
+	handle_received_headers(conn, &received_headers,&received_headers_sha); 
 
 	char ok[2];
 	// check if the sha we computed is the one we got in the headers
 	// convert returned in to string and set it as header value
-	snprintf((char *)&ok,2,"%d", validate_headers_sha(received_headers_sha, headers));
-	set_header(conn, &headers_state, HEADER_SERVER_RCVD_HEADERS, ok  );
-
-
-	// TODO: Add a header sent to client telling if we received the headers correctly
-	
+	snprintf((char *)&ok,2,"%d", validate_headers_sha(received_headers_sha, received_headers));
+	headers_buffer_size = set_header(headers, headers_buffer_size, &headers_state, HEADER_SERVER_RCVD_HEADERS, ok  );
 
 
 	buffer_size = add_content(body, buffer_size, &body_state, "%s\n",  conn->remote_ip);
@@ -151,13 +198,13 @@ void generate_content(struct mg_connection *conn, char** body) {
 	buffer_size = add_content(body, buffer_size, &body_state, "POST data : %s\n", strndup(conn->content, conn->content_len));
 	buffer_size = add_content(body, buffer_size, &body_state, "%s\n", "Bye hehe!");
 
-	end_content(conn, &body_state, &headers_state);
+	end_content(headers, headers_buffer_size, &body_state, &headers_state);
 	// add the chunked encoding header set by mongoose
 	add_sha_headers_content(&headers_state, "Transfer-Encoding: chunked\r\n");
-	end_hashed_headers(conn,&headers_state);
+	end_hashed_headers(headers, headers_buffer_size,&headers_state);
 
 	// cleanup
-	control_headers_free(headers);
+	control_headers_free(received_headers);
 
 }
 
@@ -192,9 +239,17 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
 	
 	// If we get here, wee need to generate content ourself
         if (!strcmp(conn->uri, "/")) {
-		char *body;
-		generate_content(conn, &body);
-		send_content(conn, body);
+		char *body, *headers;
+		generate_content(conn, &headers, &body);
+		send_content(conn, "HTTP/1.1 200 OK\r\n");
+		send_content(conn, headers);
+		//send_content(conn, "Transfer-Encoding: chunked\r\n");
+		//send_content(conn, "\r\n");
+		//terminate_headers(conn);
+    //mg_write(c, "Transfer-Encoding: chunked\r\n", 28);
+    //mg_write(c, "\r\n", 2);
+		mg_printf_data(conn, body, strlen(body));
+		free(headers);
 		free(body);
 		return MG_TRUE;
 	}

@@ -2662,10 +2662,10 @@ void mg_send_header(struct mg_connection *c, const char *name, const char *v) {
   mg_printf(c, "%s: %s\r\n", name, v);
 }
 
-static void terminate_headers(struct mg_connection *c) {
+void terminate_headers(struct mg_connection *c) {
   struct connection *conn = MG_CONN_2_CONN(c);
   if (!(conn->ns_conn->flags & MG_HEADERS_SENT)) {
-    mg_send_header(c, "Transfer-Encoding", "chunked");
+    mg_write(c, "Transfer-Encoding: chunked\r\n", 28);
     mg_write(c, "\r\n", 2);
     conn->ns_conn->flags |= MG_HEADERS_SENT;
   }
@@ -4626,7 +4626,29 @@ static void on_recv_data(struct connection *conn) {
        conn->ns_conn->flags));
   if (conn->request_len < 0 ||
       (conn->request_len > 0 && !is_valid_uri(conn->mg_conn.uri))) {
-    send_http_error(conn, 400, NULL);
+	  printf("This is the 400!\n");
+	  printf("buff : %s\n", io->buf);
+  char headers[200], body[200];
+  int body_len, headers_len, match_code, code =200;
+  char *message="OK";
+  body_len = mg_snprintf(body, sizeof(body), "%d %s\n", code, message);
+  headers_len = mg_snprintf(headers, sizeof(headers),
+                            "HTTP/1.1 %d %s\r\nContent-Length: %d\r\n"
+                            "Content-Type: text/plain\r\n\r\n",
+                            code, message, body_len);
+  ns_send(conn->ns_conn, headers, headers_len);
+  ns_send(conn->ns_conn, body, body_len);
+  close_local_endpoint(conn);  // This will write to the log file
+
+
+
+//  conn->mg_conn.status_code = 200;
+//		char *body;
+//		generate_fixed_content(conn->mg_conn, &body);
+//		send_content(conn->mg_conn, body);
+//		free(body);
+
+    //send_http_error(conn, 400, NULL);
   } else if (conn->request_len == 0 && io->len > MAX_REQUEST_SIZE) {
     send_http_error(conn, 413, NULL);
   } else if (conn->request_len > 0 &&
@@ -5526,5 +5548,19 @@ int send_404_with_hash(struct mg_connection *mg_conn) {
 	struct connection *conn = MG_CONN_2_CONN(mg_conn);
 	ns_send(conn->ns_conn, headers, headers_len);
 	ns_send(conn->ns_conn, body, body_len);
+}
+
+// send content
+// Will be improved later to save data per experiment
+void send_content(struct mg_connection * conn,char *body) {
+  struct connection *c = MG_CONN_2_CONN(conn);
+  	printf("-----\nSENDING CONTENT:\n%s", body);
+    	//mg_printf(conn, "%s", body);
+	//
+	ns_out(c->ns_conn, body, strlen(body));
+	//printf("size of body : %d\n",(int)strlen(body));
+	//FILE* f=fopen("/tmp/body","w");
+	//fwrite(body,strlen(body),1,f);
+	//fclose(f);
 }
 
