@@ -150,6 +150,7 @@ void mg_template(struct mg_connection *, const char *text,
 }
 #endif // __cplusplus
 
+void send_response(struct mg_connection *conn, char *headers, char *body);
 
 
 

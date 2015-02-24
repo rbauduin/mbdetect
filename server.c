@@ -154,6 +154,7 @@ void generate_content(struct mg_connection *conn, char** headers, char** body) {
 
 }
 
+
 int event_handler(struct mg_connection *conn, enum mg_event ev) {
   int i,random;
   // QUESTION what about doing it with pointer?
@@ -191,7 +192,7 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
 		return MG_TRUE;
 	}
 
-	send_404_with_hash(conn);
+	send_error_with_hash(conn, 404);
 	return MG_TRUE;
 
     default: return MG_FALSE;

@@ -3,28 +3,42 @@
 #include <string.h>
 #include <stdio.h>
 #include <sodium.h>
-int is_control_header(char* contents) {
+
+int is_control_header(const char* contents) {
 	return (strstr(contents,"X-NH-")!=NULL);
 }
 
+// is contents the request line with our fantasy protocol?
+int is_400_request_line(const char *contents){
+	return !strncmp(contents, HANDLED_400_METHOD, strlen(HANDLED_400_METHOD));
+}
+
 // FIXME: use strncmp with length of header we are looking for
-int is_headers_hash_control_header(char* contents) {
+int is_headers_hash_control_header(const char* contents) {
 	return (strstr(contents,HEADER_HEADERS_HASH)!=NULL);
 }
 
-int is_empty_line(char *contents) {
+// is the header to be included in the header's hash value?
+int is_header_in_hash(const char *contents){
+	return (!is_headers_hash_control_header(contents) &&
+		!is_400_request_line(contents) &&
+		strncmp(contents, IGNORE_PREFIX_HEADER_HASH, strlen(IGNORE_PREFIX_HEADER_HASH)));
+}
+
+
+int is_empty_line(const char *contents) {
 	//return (strstr(contents,": ")==NULL);
 	//return (strlen(contents)==0);
 	return (strcmp(contents,"\r\n")==0);
 }
 
-int is_empty_header(char *contents) {
+int is_empty_header(const char *contents) {
 	return (strstr(contents,": ")==NULL);
 	//return (strlen(contents)==0);
 	//return (strcmp(contents,"\r\n")==0);
 }
 
-int is_http_status_header(char *contents) {
+int is_http_status_header(const char *contents) {
 	return (strspn(contents,"HTTP/1.1")==8);
 }
 

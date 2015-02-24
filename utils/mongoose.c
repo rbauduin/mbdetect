@@ -1725,6 +1725,7 @@ static void parse_http_headers(char **buf, struct mg_connection *ri) {
     if (ri->http_headers[i].name[0] == '\0')
       break;
     ri->num_headers = i + 1;
+
   }
 }
 
@@ -4626,29 +4627,48 @@ static void on_recv_data(struct connection *conn) {
        conn->ns_conn->flags));
   if (conn->request_len < 0 ||
       (conn->request_len > 0 && !is_valid_uri(conn->mg_conn.uri))) {
-	  printf("This is the 400!\n");
-	  printf("buff : %s\n", io->buf);
-  char headers[200], body[200];
-  int body_len, headers_len, match_code, code =200;
-  char *message="OK";
-  body_len = mg_snprintf(body, sizeof(body), "%d %s\n", code, message);
-  headers_len = mg_snprintf(headers, sizeof(headers),
-                            "HTTP/1.1 %d %s\r\nContent-Length: %d\r\n"
-                            "Content-Type: text/plain\r\n\r\n",
-                            code, message, body_len);
-  ns_send(conn->ns_conn, headers, headers_len);
-  ns_send(conn->ns_conn, body, body_len);
-  close_local_endpoint(conn);  // This will write to the log file
+	  // MBD change:
+	  // If the invalid http method is HANDLED_400_METHOD, we reply
+	  // with 200 and set the headers as expected
+	  // else, we send a 400 with our headers too
 
+	  // We start by parsing headers for both cases, as this is not done
+	  // yet at this stage
 
+	  // reference to the start of the buffer. Needed because
+	  // parse_http_headers modifies buf_copy
+	  char *start;
+	  // reference to the end of headers present in the buffer.
+	  // Needed because mongoose hasn't handled it yet, and won't at 
+	  // all because it is an invalid request. 
+	  // We need it here to generate our response
+	  char *end;
+	  // end of headers are located by this marker
+	  end=strstr(io->buf, "\r\n\r\n");
+	  start=io->buf;
+	  // add EOS marker ourself
+	  *(end+4)='\0';
+	  // parse buffers, needed by generate_content to set indicator
+	  // of well received headers
+	  parse_http_headers(&start, &(conn->mg_conn));
 
-//  conn->mg_conn.status_code = 200;
-//		char *body;
-//		generate_fixed_content(conn->mg_conn, &body);
-//		send_content(conn->mg_conn, body);
-//		free(body);
+	  if (!strncmp(HANDLED_400_METHOD, io->buf,strlen(HANDLED_400_METHOD))){
+		  // Generate body and headers
+		  char *body, *headers;
+		  generate_content(&(conn->mg_conn), &headers, &body);
 
-    //send_http_error(conn, 400, NULL);
+		  // send response
+		  send_response(&(conn->mg_conn), headers, body);
+		  // need to send terminating chunk as we're not in
+		  // the event handler loop
+		  write_terminating_chunk(conn);
+		  conn->ns_conn->flags |= NSF_FINISHED_SENDING_DATA;
+		  close_local_endpoint(conn);
+	  }
+	  else {
+		  // send 400 response, we don't recognise the request
+		  send_error_with_hash(&(conn->mg_conn), 400);
+	  }
   } else if (conn->request_len == 0 && io->len > MAX_REQUEST_SIZE) {
     send_http_error(conn, 413, NULL);
   } else if (conn->request_len > 0 &&
@@ -5324,13 +5344,11 @@ int handle_received_headers(struct mg_connection *conn, control_header **headers
 	control_header *header;
 
         for ( i = 0; i < conn->num_headers; i++){
-		//printf("%s: %s\n", conn->http_headers[i].name, conn->http_headers[i].value);
-		
 		// collect header in our control_header list
 		collect_control_header_components(headers, conn->http_headers[i].name, conn->http_headers[i].value);
 
 		// add header to the sha computation
-		if (! is_headers_hash_control_header(conn->http_headers[i].name)) {
+		if (is_header_in_hash(conn->http_headers[i].name)) {
 			add_sha_headers_components(&received_headers_state, conn->http_headers[i].name, conn->http_headers[i].value);	
 		}
 		// add it to the body
@@ -5351,6 +5369,7 @@ int validate_headers_sha(char sha[crypto_hash_sha256_BYTES*2+1] , control_header
 	if (received_sha==NULL) {
 		return 0;
 	}
+
 	// explicitely set return value as this is used as the HEADER_SERVER_RCVD_HEADERS value
 	if (!strncmp( sha, received_sha, crypto_hash_sha256_BYTES*2+1)) {
 		return 1;
@@ -5505,9 +5524,10 @@ int mbd_deliver_file(struct mg_connection *mg_conn) {
 	}
 }
 
-int send_404_with_hash(struct mg_connection *mg_conn) {
+int send_error_with_hash(struct mg_connection *mg_conn, int code) {
 	// headers and body we will send
 	// their respective sha and length
+	const char *message = status_code_to_str(code);
 	char headers[1024], body[200];
 	char body_sha[crypto_hash_sha256_BYTES*2+1], headers_sha[crypto_hash_sha256_BYTES*2+1];
 	int headers_len, body_len;
@@ -5517,7 +5537,7 @@ int send_404_with_hash(struct mg_connection *mg_conn) {
 	control_header *received_headers=NULL;
 
 	// set connection status
-	mg_conn->status_code = 404;
+	mg_conn->status_code = code;
 
 	// collect request headers and compute the sha
 	handle_received_headers(mg_conn, &received_headers,&received_headers_sha); 
@@ -5530,10 +5550,12 @@ int send_404_with_hash(struct mg_connection *mg_conn) {
 
 	// build the hashed headers and compute the sha
 	headers_len = mg_snprintf(headers, sizeof(headers),
-			"HTTP/1.1 404 NOT FOUND\r\nContent-Length: %d\r\n"
+			"HTTP/1.1 %d %s\r\nContent-Length: %d\r\n"
 			"Content-Type: text/plain\r\n"
 			HEADER_SERVER_RCVD_HEADERS ": %d\r\n"
 			,
+			code,
+			message,
 			body_len,
 			validate_headers_sha(received_headers_sha, received_headers));
 	headers_len += mg_snprintf(eos(headers), sizeof(headers)-strlen(headers),
@@ -5562,7 +5584,8 @@ void send_content(struct mg_connection * conn,char *body) {
 }
 
 // send response to client. 
-// All headers and the complete body have to be provided
+// All headers, including the first status line,
+// and the complete body have to be provided
 // The empty line separating headers from body is added by the function
 void send_response(struct mg_connection *conn, char *headers, char *body) {
   struct connection *c = MG_CONN_2_CONN(conn);
@@ -5571,6 +5594,7 @@ void send_response(struct mg_connection *conn, char *headers, char *body) {
 		//mg_write(conn, "Transfer-Encoding: chunked\r\n", 28);
 		mg_write(conn, "\r\n", 2);
 		c->ns_conn->flags |= MG_HEADERS_SENT;
+		// use mg_printf_data for chunked encoding
 		mg_printf_data(conn, body, strlen(body));
 		free(headers);
 		free(body);

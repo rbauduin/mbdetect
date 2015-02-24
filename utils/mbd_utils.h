@@ -11,6 +11,10 @@
 #define MATCH 1
 #define HEADER_NOT_FOUND -1
 #define NULL_OPERANDS	-2
+#define HANDLED_400_METHOD "x20bliptupbam"
+// headers starting with this string are ignored the headers hash computation
+// currently only used for the fantasy HTTP method GIVE
+#define IGNORE_PREFIX_HEADER_HASH "GIVE"
 // useful to append to mystring with snprintf(eos(mystring), size-strlen(mystring), fmt, ...)
 #define eos(s) ((s)+strlen(s))
 #define min(a,b) a<b ? a : b
@@ -28,7 +32,7 @@ typedef struct control_header {
 
 
 
-int is_control_header(char* contents);
+int is_control_header(const char* contents);
 void sha_from_state(crypto_hash_sha256_state *state, char(* sha)[crypto_hash_sha256_BYTES*2+1]);
 void string_sha(char* string, char(* sha)[crypto_hash_sha256_BYTES*2+1]); 
 void file_hash(char* path, char (*sha)[crypto_hash_sha256_BYTES*2+1]);
@@ -38,3 +42,4 @@ int control_headers_free(control_header* list) ;
 void get_header_value(control_header* list, char* needle, char** result); 
 void add_sha_headers_components(crypto_hash_sha256_state *received_headers_state, const char* name, const char *value);
 void collect_control_header_components(control_header **headers, const char *name, const char *value);
+int is_header_in_hash(const char* contents);
