@@ -97,7 +97,7 @@ void extract_header(char* contents, char** name, char** value){
 		// +1: strlcpy requires to take \0 in account
 		len = separator-contents+1;
 		*name=(char *)malloc(len);
-		memset(*name, 0, len+1);
+		memset(*name, 0, len);
 		strlcpy(*name,contents,len);
 		// value
 		// length of  header value, ie starting after ": "
