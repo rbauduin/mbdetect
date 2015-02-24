@@ -36,29 +36,17 @@ int mappings_len = sizeof(mappings)/sizeof(mappings[0]);
 // *****************************
 
 
-// structure keeping where we write
-typedef struct write_dest {
-	// file descriptor curl writes the payload to
-	FILE *fd;
-	// used by curl to keep trace of what was already written
-	size_t size;
-	// path to save payload to
-	char *path;
-	// payload type, D for body, H for headers 
-	char type; 
-	crypto_hash_sha256_state sha_state;
-	char sha[2*crypto_hash_sha256_BYTES+1];
-	// FIXME: this is only for headers, and will never happen for body. Should we have 2 distinct struct? 
-	// // however, this has an impact on the rest of the code, with the type of arguments changed....
-	// hash of body sent by server
-	control_header* control_headers;
-} payload_specs;
 
 
 void payload_specs_init(payload_specs* specs) {
 	specs->control_headers=NULL;
 	specs->fd=NULL;
 	specs->path=NULL;
+}
+
+void collect_curl_info(CURL *curl, queries_info_t *queries_info){
+	curl_easy_getinfo(curl,CURLINFO_LOCAL_PORT, &(queries_info->info.local_port));
+	curl_easy_getinfo(curl,CURLINFO_NUM_CONNECTS, &(queries_info->info.num_connects));
 }
 
 // Finalise sha computation when payload received
@@ -122,10 +110,10 @@ void extract_header(char* contents, char** name, char** value){
 // - sha of body ok
 // - server received our headers correctly
 // errors are added to the message string
-int validate_http_headers(payload_specs headers_specs, payload_specs body_specs, char (*message)[VALIDATION_MESSAGE_LENGTH]) {
+int validate_http_headers(payload_specs *headers_specs, payload_specs *body_specs, char (*message)[VALIDATION_MESSAGE_LENGTH]) {
 	// FIXME: Maybe we can make this code more compact somehow
-	int res = validate_header(headers_specs.control_headers, HEADER_HEADERS_HASH, headers_specs.sha);
-	if (headers_specs.control_headers==NULL || res < 0 ) {
+	int res = validate_header(headers_specs->control_headers, HEADER_HEADERS_HASH, headers_specs->sha);
+	if (headers_specs->control_headers==NULL || res < 0 ) {
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "HEADERS SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n");
 				return 0;
 	} 
@@ -134,25 +122,25 @@ int validate_http_headers(payload_specs headers_specs, payload_specs body_specs,
 	}
 	else if (!res) {
 		char *headers_h;
-		get_header_value(headers_specs.control_headers, HEADER_HEADERS_HASH, &headers_h);
+		get_header_value(headers_specs->control_headers, HEADER_HEADERS_HASH, &headers_h);
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "DIFFERENT SHA, headers modified!!\n");
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "transmitted headers hash: *%s*\n", headers_h);
-		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "computed headers sha256 :\n*%s*\n", headers_specs.sha);
+		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "computed headers sha256 :\n*%s*\n", headers_specs->sha);
 	}
 
-	res = validate_header(headers_specs.control_headers, HEADER_BODY_HASH, body_specs.sha);
+	res = validate_header(headers_specs->control_headers, HEADER_BODY_HASH, body_specs->sha);
 	if (res==HEADER_NOT_FOUND){
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "Headers %s not found!!\n", HEADER_BODY_HASH);
 	}
 	else if (!res) {
 		char *headers_h;
-		get_header_value(headers_specs.control_headers, HEADER_HEADERS_HASH, &headers_h);
+		get_header_value(headers_specs->control_headers, HEADER_HEADERS_HASH, &headers_h);
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "DIFFERENT SHA, BODY modified!!\n");
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "transmitted body hash: *%s*\n", headers_h);
-		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "computed body sha256 :\n*%s*\n", body_specs.sha);
+		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "computed body sha256 :\n*%s*\n", body_specs->sha);
 	}
 
-	res = validate_header(headers_specs.control_headers, HEADER_SERVER_RCVD_HEADERS, "1");
+	res = validate_header(headers_specs->control_headers, HEADER_SERVER_RCVD_HEADERS, "1");
 	if (res==HEADER_NOT_FOUND){
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "Headers %s not found!!\n", HEADER_SERVER_RCVD_HEADERS);
 	}
@@ -721,7 +709,8 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 // cleans things up when curl query is done. 
 void clean_output(config_setting_t *test, payload_specs *headers_specs,payload_specs  *body_specs ){
 	// control headers are awlays collected, free them
-	control_headers_free(headers_specs->control_headers);
+	// // not here anymore, after all repetitions are done
+	//control_headers_free(headers_specs->control_headers);
 	
 	// if there was output written to a file, clean stuff
 	config_setting_t *output_file = config_setting_get_member(test, "output_file");
@@ -815,9 +804,6 @@ int main(int argc, char *argv[])
 	    queries_count = config_setting_length(queries);
 	    // iterate on queries
 	    for(k=0;k<queries_count;k++){
-		    // initialise body and headers structures passed to curl callbacks
-		    payload_specs body_specs;
-		    payload_specs headers_specs;
 
 		    
 		    // get query of this iteration
@@ -831,20 +817,46 @@ int main(int argc, char *argv[])
 		    else {
 			    repeat_query = 1;
 		    }
+
+		    queries_info_t *queries_info=NULL;
+		    queries_info_t *current_query_info=queries_info;
+
+		    current_query_info=queries_info;
+		    
+		    // initialise curl
+		    // Do it outside the repetition loop to reuse
+		    // same connection if keep-alive
+		    curl = curl_easy_init();
+
 		    /* Perform the request(s), res will get the return code */ 
 		    for(l=0; l<repeat_query; l++) {
-			    // initialise curl
-			    curl = curl_easy_init();
+				    if (queries_info==NULL) {
+					    current_query_info = (queries_info_t *)malloc(sizeof(queries_info_t));
+					    queries_info = current_query_info;
+					    printf("allocated first\n");
+				    }
+				    else {
+					    current_query_info->next= (queries_info_t *)malloc(sizeof(queries_info_t));
+					    current_query_info=current_query_info->next;
+					    printf("allocated additional\n");
+				    }
+				    current_query_info->headers_specs=NULL;
+				    current_query_info->body_specs=NULL;
+				    current_query_info->next = NULL;
+			    
+			    // initialise body and headers structures passed to curl callbacks
+			    payload_specs *body_specs = (payload_specs*) malloc(sizeof(payload_specs));
+			    payload_specs *headers_specs = (payload_specs*) malloc(sizeof(payload_specs));
 			    // initialise payload specs
-			    payload_specs_init(&body_specs);
-			    body_specs.type='D';
-			    payload_specs_init(&headers_specs);
-			    headers_specs.type='H';
+			    payload_specs_init(body_specs);
+			    body_specs->type='D';
+			    payload_specs_init(headers_specs);
+			    headers_specs->type='H';
 		    
 			    // set options and headers
 			    control_header *additional_headers=NULL;
 			    set_options(curl, query, &additional_headers);
-			    set_output(curl, query, &headers_specs, &body_specs);
+			    set_output(curl, query, headers_specs, body_specs);
 			    curl_headers=NULL;
 			    set_headers(curl, query, curl_headers, additional_headers);
 
@@ -873,8 +885,8 @@ int main(int argc, char *argv[])
 				    // end of validations in config file
 				    
 				    // compute headers and body hash 
-				    hash_final(&body_specs);
-				    hash_final(&headers_specs);
+				    hash_final(body_specs);
+				    hash_final(headers_specs);
 
 				    // reset message, to wipe validations messages
 				    memset(message,0,VALIDATION_MESSAGE_LENGTH);
@@ -889,15 +901,37 @@ int main(int argc, char *argv[])
 					    }
 				    }
 
+				    // collect data of this query
+				    current_query_info->headers_specs = headers_specs;
+				    current_query_info->body_specs    = body_specs;
+				    collect_curl_info(curl, current_query_info);
 
-				    /* cleanup after each query */ 
-				    clean_output(query, &headers_specs, &body_specs);
+
+
+				    // cleanup after each query, but keep info collected
 				    control_headers_free(additional_headers);
-				    curl_slist_free_all(curl_headers);
-				    curl_easy_cleanup(curl);
+				    clean_output(query, headers_specs, body_specs);
 
 			    }
 		    }
+		    curl_slist_free_all(curl_headers);
+		    curl_easy_cleanup(curl);
+
+		    queries_info_t *p= queries_info, *previous=NULL;
+		    while (p!=NULL){
+			    printf("Port was %lu\n", p->info.local_port);
+			    printf("Body hash was %s\n", p->body_specs->sha);
+			    printf("Headers hash was %s\n", p->headers_specs->sha);
+			    printf("Number of connections was %lu\n", p->info.num_connects);
+			    control_headers_free(p->headers_specs->control_headers);
+			    free(p->headers_specs);
+			    free(p->body_specs);
+			    previous= p;
+			    p=p->next;
+			    printf("Freeing\n");
+			    free(previous);
+		    }
+		    printf("Done freeing\n");
 	    }
     }
  

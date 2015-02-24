@@ -20,15 +20,44 @@
 #define min(a,b) a<b ? a : b
 #define max(a,b) a>b ? a : b
 
-
-
-// store  headers sent by server in a chained list
-// their name start with X-NH- (NH for not included in hash)
+// store  headers of the request in a chained list
 typedef struct control_header {
 	char *name;
 	char* value;
 	struct control_header* next;
 } control_header;
+
+
+
+// structure keeping where we write
+typedef struct write_dest {
+	// file descriptor curl writes the payload to
+	FILE *fd;
+	// used by curl to keep trace of what was already written
+	size_t size;
+	// path to save payload to
+	char *path;
+	// payload type, D for body, H for headers 
+	char type; 
+	crypto_hash_sha256_state sha_state;
+	char sha[2*crypto_hash_sha256_BYTES+1];
+	// FIXME: this is only for headers, and will never happen for body. Should we have 2 distinct struct? 
+	// // however, this has an impact on the rest of the code, with the type of arguments changed....
+	// hash of body sent by server
+	control_header* control_headers;
+} payload_specs;
+
+typedef struct query_info {
+	long local_port, num_connects;
+	
+} query_info;
+
+typedef struct queries_info_t {
+	payload_specs *headers_specs;
+	payload_specs *body_specs;
+	query_info info;
+	struct queries_info_t *next;
+} queries_info_t;
 
 
 
