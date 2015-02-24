@@ -441,6 +441,7 @@ int ns_avprintf(char **buf, size_t size, const char *fmt, va_list ap) {
       va_end(ap_copy);
     }
   } else if (len > (int) size) {
+    if (*buf) NS_FREE(*buf);
     // Standard-compliant code path. Allocate a buffer that is large enough.
     if ((*buf = (char *) NS_MALLOC(len + 1)) == NULL) {
       len = -1;
@@ -4646,6 +4647,9 @@ static void on_recv_data(struct connection *conn) {
 	  // end of headers are located by this marker
 	  end=strstr(io->buf, "\r\n\r\n");
 	  start=io->buf;
+	  // skip http method line
+	  skip(&start, "\n");
+	  // FIXME: check we are not out of bound
 	  // add EOS marker ourself
 	  *(end+4)='\0';
 	  // parse buffers, needed by generate_content to set indicator
@@ -5519,6 +5523,8 @@ int mbd_deliver_file(struct mg_connection *mg_conn) {
 				validate_headers_sha(received_headers_sha, received_headers));
 		// setup the fd for mongoose
 		conn->endpoint.fd = open(path, O_RDONLY | O_BINARY, 0);
+		// free headers collected as won't be used anymore
+		control_headers_free(received_headers);
 		// send the file
 		mbd_file_endpoint(conn, path, &st, additional_headers);
 	}
@@ -5565,6 +5571,9 @@ int send_error_with_hash(struct mg_connection *mg_conn, int code) {
 	string_sha(headers, &headers_sha);
 	headers_len += mg_snprintf(eos(headers), sizeof(headers)-strlen(headers),
 			HEADER_HEADERS_HASH ": %s\r\n\r\n", headers_sha);
+
+	// free headers collected as won't be used anymore
+	control_headers_free(received_headers);
 
 	// send response
 	struct connection *conn = MG_CONN_2_CONN(mg_conn);

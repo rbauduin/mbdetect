@@ -65,15 +65,15 @@ int  append_to_buffer(char **acc, int buffer_size, char* addition){
 size_t add_content(char **acc, int buffer_size, crypto_hash_sha256_state *state, const char *fmt, ...) {
   va_list ap;
   int len;
-  // FIXME use only addition
-  char addition_a[1024], *addition=addition_a;
+  char *addition=(char *) malloc(1024);
 
   va_start(ap, fmt);
-  len = ns_avprintf(&addition, strlen(addition), fmt, ap);
+  len = ns_avprintf(&addition, sizeof(addition), fmt, ap);
   va_end(ap);
   buffer_size = append_to_buffer(acc, buffer_size,  addition);
   // update body hash
   crypto_hash_sha256_update(state, addition, strlen(addition));
+  free(addition);
   return buffer_size;
 }
 
@@ -141,7 +141,9 @@ void generate_content(struct mg_connection *conn, char** headers, char** body) {
 	buffer_size = add_content(body, buffer_size, &body_state, "%s\n",  conn->remote_ip);
 	buffer_size = add_content(body, buffer_size, &body_state, "%d\n", conn->remote_port);
 	buffer_size = add_content(body, buffer_size, &body_state, "%zd\n", conn->content_len);
-	buffer_size = add_content(body, buffer_size, &body_state, "POST data : %s\n", strndup(conn->content, conn->content_len));
+	char * post_data = strndup(conn->content, conn->content_len);
+	buffer_size = add_content(body, buffer_size, &body_state, "POST data : %s\n", post_data);
+	free(post_data);
 	buffer_size = add_content(body, buffer_size, &body_state, "%s\n", "Bye hehe!");
 
 	// add the body hash to the headers
