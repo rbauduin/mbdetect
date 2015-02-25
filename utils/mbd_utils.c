@@ -161,7 +161,8 @@ void get_header_value(control_header* list, char* needle, char** result) {
 }
 
 // append a string to an accumulator, growing the allocated memory if needed
-int  append_to_buffer(char **acc, int buffer_size, char* addition){
+int  append_to_buffer(char **acc, char* addition){
+  int buffer_size = sizeof(acc);
   int new_size = strlen(*acc) + strlen(addition) + 1;
   //check if new string fits in buffer
   // +1 : \0

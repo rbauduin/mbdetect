@@ -11,7 +11,7 @@
 
 // set a header line, only for content we generate ourself, not for use when serving files!
 int set_header_line(char **acc, int buffer_size, crypto_hash_sha256_state *state, char *addition) {
-	int new_buffer_size = append_to_buffer(acc, buffer_size, addition);
+	int new_buffer_size = append_to_buffer(acc, addition);
 	int header_len=strlen(addition);
 
 	// if this is not a control header, add it to the headers hash computation
@@ -52,7 +52,7 @@ size_t add_content(char **acc, int buffer_size, crypto_hash_sha256_state *state,
   va_start(ap, fmt);
   len = ns_avprintf(&addition, sizeof(addition), fmt, ap);
   va_end(ap);
-  buffer_size = append_to_buffer(acc, buffer_size,  addition);
+  buffer_size = append_to_buffer(acc, addition);
   // update body hash
   crypto_hash_sha256_update(state, addition, strlen(addition));
   free(addition);

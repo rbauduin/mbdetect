@@ -74,4 +74,4 @@ void get_header_value(control_header* list, char* needle, char** result);
 void add_sha_headers_components(crypto_hash_sha256_state *received_headers_state, const char* name, const char *value);
 void collect_control_header_components(control_header **headers, const char *name, const char *value);
 int is_header_in_hash(const char* contents);
-int  append_to_buffer(char **acc, int buffer_size, char* addition);
+int  append_to_buffer(char **acc, char* addition);
