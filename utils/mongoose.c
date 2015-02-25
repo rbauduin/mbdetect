@@ -4649,7 +4649,9 @@ static void on_recv_data(struct connection *conn) {
 	  start=io->buf;
 	  // skip http method line
 	  skip(&start, "\n");
-	  // FIXME: check we are not out of bound
+	  // FIXME: we have a problem here!
+	  // headers are not handled correctly without it
+	  // but adding it without bound check can lead to a segfault
 	  // add EOS marker ourself
 	  *(end+4)='\0';
 	  // parse buffers, needed by generate_content to set indicator

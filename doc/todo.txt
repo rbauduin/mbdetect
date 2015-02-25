@@ -1,9 +1,11 @@
+- fix  *(end+4)='\0'; in mongoose.c on_recv_data
 - add body size in header ?
 - support non curl tests in config file
 - repeat tests with and without mptcp, with and without mptch checksum
 - collect data of the run on client and server. Add log function
 - error handling
 - collect the payload_specs of the subsequent repetition of a query in a linked list
+- write headers and body of query repetitions in distinct files?
 
 
 - add control of headers in server code sending 404 [DONE]

@@ -8,6 +8,100 @@
 // libsodium for hash computation
 #include <sodium.h>
 
+// union type capable of holding each type of value found in validations
+typedef union validation_value_t {
+		int ival;
+		long long llval;
+		double fval;
+		char *sval;
+} validation_value_t;
+
+
+
+int validate_info_response_code(queries_info_t *head, config_setting_t * entry,  char (*message)[VALIDATION_MESSAGE_LENGTH]) {
+	// actual value we got in this run
+	validation_value_t actual;
+	config_setting_t *value_entry = config_setting_get_member(entry, "value");
+	if (value_entry == NULL) {
+		printf("value entry not found in validation\n");
+		return -1;
+	}
+	//curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE , &(actual.ival));
+	int i=0;
+	while (head!=NULL){
+		if (head->info.response_code!=value_entry->value.ival) {
+			//snprintf(*message, VALIDATION_MESSAGE_LENGTH, "FAIL, %s expected %d but is %d\n", "response code", value_entry->value.ival, head->info.response_code);
+			printf("FAIL, %s expected %d but is %d\n", "response code", value_entry->value.ival, head->info.response_code);
+			return 0;
+		}
+		else {
+			//snprintf(*message, VALIDATION_MESSAGE_LENGTH, "SUCCESS, query num %d, %s is %d\n", "response code", value_entry->value.ival);
+			printf("SUCCESS, query num %d, %s is %d\n", i, "response code", value_entry->value.ival);
+		}
+		head=head->next;
+		i++;
+	}
+}
+
+
+int validate_info_size_download(queries_info_t *head, config_setting_t * entry,  char (*message)[VALIDATION_MESSAGE_LENGTH]) {
+	// actual value we got in this run
+	validation_value_t actual;
+	config_setting_t *value_entry = config_setting_get_member(entry, "value");
+	if (value_entry == NULL) {
+		printf("value entry not found in validation\n");
+		return -1;
+	}
+	//curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE , &(actual.ival));
+	int i=0;
+	while (head!=NULL){
+		if (head->info.size_download!=value_entry->value.fval) {
+			//snprintf(*message, VALIDATION_MESSAGE_LENGTH, "FAIL, %s expected %d but is %d\n", "response code", value_entry->value.ival, head->info.response_code);
+			printf("FAIL, %s expected %f but is %f\n", "size download", value_entry->value.fval, head->info.size_download);
+			return 0;
+		}
+		else {
+			//snprintf(*message, VALIDATION_MESSAGE_LENGTH, "SUCCESS, query num %d, %s is %d\n", "response code", value_entry->value.ival);
+			printf("SUCCESS, query num %d, %s is %d\n", i, "response code", value_entry->value.ival);
+		}
+		head=head->next;
+		i++;
+	}
+}
+
+int validate_info_same_port(queries_info_t *head, config_setting_t * setting_entry) {
+	int port=-1;
+	while (head!=NULL) {
+		// store port used by first query
+		if (port < 0) {
+			port = head->info.local_port;
+		}
+		// for subsequent queries, check the same port is used
+		else {
+			if (head->info.local_port != port){
+				return 0; 
+			}
+		}
+		head=head->next;
+	}
+	return 1;
+
+}
+
+
+
+typedef struct validations_mapping{
+	char *name;
+	int (*f)(queries_info_t *head, config_setting_t * entry,  char (*message)[VALIDATION_MESSAGE_LENGTH]);
+} validations_mapping;
+
+validations_mapping validations_mappings[]={
+	{"response_code", validate_info_response_code}
+	,{"size_download", validate_info_size_download}
+};
+
+int validations_mappings_len = sizeof(validations_mappings)/sizeof(validations_mappings[0]);
+
 
 typedef struct {
 	char *name;
@@ -47,6 +141,8 @@ void payload_specs_init(payload_specs* specs) {
 void collect_curl_info(CURL *curl, queries_info_t *queries_info){
 	curl_easy_getinfo(curl,CURLINFO_LOCAL_PORT, &(queries_info->info.local_port));
 	curl_easy_getinfo(curl,CURLINFO_NUM_CONNECTS, &(queries_info->info.num_connects));
+	curl_easy_getinfo(curl,CURLINFO_RESPONSE_CODE, &(queries_info->info.response_code));
+	curl_easy_getinfo(curl,CURLINFO_SIZE_DOWNLOAD, &(queries_info->info.size_download));
 }
 
 // Finalise sha computation when payload received
@@ -149,6 +245,7 @@ int validate_http_headers(payload_specs *headers_specs, payload_specs *body_spec
 	}
 	//snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "HEADERS VALIDATIONS DONE\n");
 }
+
 
 
 // Check that the headers with header_name has the expected value
@@ -257,19 +354,11 @@ write_in_file_generic(void *contents, size_t size, size_t nmemb, payload_specs *
 //------------------------------------
 //
 
-// union type capable of holding each type of value found in validations
-typedef union validation_value_t {
-		int ival;
-		long long llval;
-		double fval;
-		char *sval;
-} validation_value_t;
-
 // check that the validation specified in entry passes.
 // Returns 0 if it fails, 1 if it passes
 // Also sets the message detailing what happened, both in case of success and failure
 // // FIXME: add other comparisons than equality
-int perform_validation(CURL *curl,config_setting_t* entry, char (*message)[2048]) {
+int perform_validation(CURL *curl,config_setting_t* entry, char (*message)[VALIDATION_MESSAGE_LENGTH]) {
 	// value to return
 	int res;
 	
@@ -341,6 +430,62 @@ int perform_validation(CURL *curl,config_setting_t* entry, char (*message)[2048]
 	return res;
 }
 
+
+// check that the validation specified in entry passes.
+// Returns 0 if it fails, 1 if it passes
+// Also sets the message detailing what happened, both in case of success and failure
+// // FIXME: add other comparisons than equality
+int new_validation(queries_info_t *queries_info,config_setting_t* entry, char (*message)[2048]) {
+	// value to return
+	int res;
+	
+	// actual value we got in this run
+	validation_value_t actual;
+
+	// value entry from the config file. 
+	// value_entry->value contains the union typed value we need to compare to expected value
+	config_setting_t *value_entry = config_setting_get_member(entry, "value");
+
+	// name entry from the config file, and its string value.
+	// Its value is the name of the option passed to curl_easy_getinfo, which we get from the mappings
+	config_setting_t *name_entry = config_setting_get_member(entry, "name");
+	const char * name_str=config_setting_get_string(name_entry);
+	// mapping of the option name to its value
+	validations_mapping m;
+	int mapping_found = find_validation_mapping(name_str,&m);
+	if (mapping_found) {
+		printf("ERROR, no validation mapping found for %s!\n", name_str);
+		exit(1);
+	}
+
+	if (value_entry == NULL) {
+		return -1;
+	}
+
+	res = m.f(queries_info, entry, message);
+	return res;
+}
+
+
+
+// find a mapping options as string -> option symbol
+int find_validation_mapping(const char* validation, validations_mapping *m) {
+	int i=0;
+	validations_mapping found;
+	while (i<validations_mappings_len && strcmp(validations_mappings[i].name, validation)) {
+		i++;
+	}
+	if (i<validations_mappings_len) {
+		*m = validations_mappings[i];
+		return 0;
+	}
+	else {
+		printf("Validation %s not handled by this code\n", validation);
+		return -1;
+	}
+
+}
+ 
 
 // find a mapping options as string -> option symbol
 int find_mapping(const char* option, mapping* m) {
@@ -462,7 +607,7 @@ void set_options(CURL* curl, config_setting_t *test, control_header **additional
 			handle_post_options(additional_headers, name_str, value_long);
 		}
 		else {
-			printf("NO MATCH\n____________________________________\n");
+			printf("NO option type MATCH\n____________________________________\n");
 		}
 	}
 }
@@ -833,12 +978,10 @@ int main(int argc, char *argv[])
 				    if (queries_info==NULL) {
 					    current_query_info = (queries_info_t *)malloc(sizeof(queries_info_t));
 					    queries_info = current_query_info;
-					    printf("allocated first\n");
 				    }
 				    else {
 					    current_query_info->next= (queries_info_t *)malloc(sizeof(queries_info_t));
 					    current_query_info=current_query_info->next;
-					    printf("allocated additional\n");
 				    }
 				    current_query_info->headers_specs=NULL;
 				    current_query_info->body_specs=NULL;
@@ -868,21 +1011,6 @@ int main(int argc, char *argv[])
 				    fprintf(stderr, "curl_easy_perform() failed: %s\n",
 						    curl_easy_strerror(res));
 			    else {
-				    // extract validations for the query
-				    validations = config_setting_get_member(query, "validations");
-				    if (validations != NULL) {
-					    //printf("Performing validations\n");
-					    validations_count = config_setting_length(validations);
-					    // iterate over validation of this query
-					    for(m=0;m<validations_count;m++){
-						    validation = config_setting_get_elem(validations, m);
-						    // wipe message from previous validation
-						    memset(message,0,VALIDATION_MESSAGE_LENGTH);
-						    perform_validation(curl,validation, &message);
-						    printf("%s",message);
-					    }
-				    }
-				    // end of validations in config file
 				    
 				    // compute headers and body hash 
 				    hash_final(body_specs);
@@ -917,21 +1045,47 @@ int main(int argc, char *argv[])
 		    curl_slist_free_all(curl_headers);
 		    curl_easy_cleanup(curl);
 
+
+		    // extract validations for the query
+		    validations = config_setting_get_member(query, "validations");
+		    if (validations != NULL) {
+			    //printf("Performing validations\n");
+			    validations_count = config_setting_length(validations);
+			    // iterate over validation of this query
+			    for(m=0;m<validations_count;m++){
+				    validation = config_setting_get_elem(validations, m);
+				    // wipe message from previous validation
+				    memset(message,0,VALIDATION_MESSAGE_LENGTH);
+				    //perform_validation(curl,validation, &message);
+				    new_validation(queries_info, validation, &message);
+				    printf("%s",message);
+			    }
+		    }
+		    // end of validations in config file
+
+
+
+
+
 		    queries_info_t *p= queries_info, *previous=NULL;
+		    //if (validate_info_same_port(queries_info, NULL)) {
+		    //        printf("USED SAME PORT\n");
+		    //}
+		    //else {
+		    //        printf("USED DIFFERENT PORT\n");
+		    //}
 		    while (p!=NULL){
-			    printf("Port was %lu\n", p->info.local_port);
-			    printf("Body hash was %s\n", p->body_specs->sha);
-			    printf("Headers hash was %s\n", p->headers_specs->sha);
-			    printf("Number of connections was %lu\n", p->info.num_connects);
+			    //printf("Port was %lu\n", p->info.local_port);
+			    //printf("Body hash was %s\n", p->body_specs->sha);
+			    //printf("Headers hash was %s\n", p->headers_specs->sha);
+			    //printf("Number of connections was %lu\n", p->info.num_connects);
 			    control_headers_free(p->headers_specs->control_headers);
 			    free(p->headers_specs);
 			    free(p->body_specs);
 			    previous= p;
 			    p=p->next;
-			    printf("Freeing\n");
 			    free(previous);
 		    }
-		    printf("Done freeing\n");
 	    }
     }
  

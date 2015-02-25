@@ -160,3 +160,21 @@ void get_header_value(control_header* list, char* needle, char** result) {
 	*result=NULL;
 }
 
+// append a string to an accumulator, growing the allocated memory if needed
+int  append_to_buffer(char **acc, int buffer_size, char* addition){
+  int new_size = strlen(*acc) + strlen(addition) + 1;
+  //check if new string fits in buffer
+  // +1 : \0
+  if ( new_size > buffer_size) {
+	  // if we grow, grow 2 times what's needed
+	  buffer_size=new_size*2;
+	  *acc = (char *) realloc(*acc, buffer_size);
+	  if (*acc==NULL) {
+		  return -1;
+	  }
+  }
+  // append content to the accumulator
+  strlcat(*acc,addition);
+  return buffer_size;
+}
+
