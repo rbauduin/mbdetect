@@ -1,4 +1,5 @@
 #include <sodium.h>
+#include <libconfig.h>
 #define HEADER_HEADERS_HASH "X-NH-H-SHA256"
 #define HEADER_BODY_HASH "X-NH-D-SHA256"
 #define VALIDATION_MESSAGE_LENGTH 2048
@@ -12,6 +13,7 @@
 #define HEADER_NOT_FOUND -1
 #define NULL_OPERANDS	-2
 #define HANDLED_400_METHOD "x20bliptupbam"
+#define QUERY_INFO_FIELD_NUMBER 4
 // headers starting with this string are ignored the headers hash computation
 // currently only used for the fantasy HTTP method GIVE
 #define IGNORE_PREFIX_HEADER_HASH "GIVE"
@@ -19,6 +21,17 @@
 #define eos(s) ((s)+strlen(s))
 #define min(a,b) a<b ? a : b
 #define max(a,b) a>b ? a : b
+
+
+// Colors in terminal
+#define KNON  "\x1B[0m"
+#define KRED  "\x1B[31m"
+#define KGRN  "\x1B[32m"
+#define KYEL  "\x1B[33m"
+#define KBLU  "\x1B[34m"
+#define KMAG  "\x1B[35m"
+#define KCYN  "\x1B[36m"
+#define KWHT  "\x1B[37m"
 
 // store  headers of the request in a chained list
 typedef struct control_header {
@@ -47,21 +60,38 @@ typedef struct write_dest {
 	control_header* control_headers;
 } payload_specs;
 
-typedef struct query_info {
-	long local_port, num_connects;
-	int response_code;
-	double size_download;
-	
-} query_info;
+typedef union query_info_field {
+	int ival;
+	long long llval;
+	float fval;
+	char *sval;
+	double dval;
+} query_info_field;
 
 typedef struct queries_info_t {
 	payload_specs *headers_specs;
 	payload_specs *body_specs;
-	query_info info;
+	query_info_field info[QUERY_INFO_FIELD_NUMBER];
 	struct queries_info_t *next;
 } queries_info_t;
 
 
+// !!!!!!!!!!!!!!!!!!!
+// When adding a field,
+// remember to increase QUERY_INFO_FIELD_NUMBER above in mbd-utils.h 
+typedef enum validation_fields {
+	RESPONSE_CODE,
+	SIZE_DOWNLOAD,
+	NUM_CONNECTS,
+	LOCAL_PORT,
+	NONE
+} validation_fields;
+
+typedef struct validations_mapping{
+	char *name;
+	int  code;
+	int (*f)(queries_info_t *head, struct validations_mapping m, config_setting_t * entry,  char **message);
+} validations_mapping;
 
 int is_control_header(const char* contents);
 void sha_from_state(crypto_hash_sha256_state *state, char(* sha)[crypto_hash_sha256_BYTES*2+1]);

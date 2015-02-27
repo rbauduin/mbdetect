@@ -18,7 +18,7 @@ typedef union validation_value_t {
 
 
 
-int validate_info_response_code(queries_info_t *head, config_setting_t * entry,  char **message) {
+int validate_info_value(queries_info_t *head, validations_mapping m, config_setting_t * entry,  char **message) {
 	// message for one iteration in the repetition on the query
 	char iteration_message[VALIDATION_MESSAGE_LENGTH];
 	config_setting_t *value_entry = config_setting_get_member(entry, "value");
@@ -28,16 +28,52 @@ int validate_info_response_code(queries_info_t *head, config_setting_t * entry, 
 	}
 	int i=0;
 	while (head!=NULL){
-		if (head->info.response_code!=value_entry->value.ival) {
-			//snprintf(*message, VALIDATION_MESSAGE_LENGTH, "FAIL, %s expected %d but is %d\n", "response code", value_entry->value.ival, head->info.response_code);
-			snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,"FAIL, %s expected %d but is %d\n", "response code", value_entry->value.ival, head->info.response_code);
-			append_to_buffer(message, iteration_message);
-			return 0;
-		}
-		else {
-			//snprintf(*message, VALIDATION_MESSAGE_LENGTH, "SUCCESS, query num %d, %s is %d\n", "response code", value_entry->value.ival);
-			snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,"SUCCESS, query num %d, %s is %d\n", i, "response code", value_entry->value.ival);
-			append_to_buffer(message, iteration_message);
+		switch(value_entry->type)
+		{ 
+			case CONFIG_TYPE_FLOAT:
+				if (head->info[m.code].fval!=value_entry->value.fval) {
+					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,KRED "FAIL" KNON " (float), %s expected %f but is %f\n", m.name, value_entry->value.fval, head->info[m.code].fval);
+					append_to_buffer(message, iteration_message);
+					// do not return, but continue validating subsequent queries
+					//return 0;
+				}
+				else {
+					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,KGRN "SUCCESS" KNON ", query num %d, %s is %f\n", i, m.name, value_entry->value.fval);
+					append_to_buffer(message, iteration_message);
+				}
+				break;
+			case CONFIG_TYPE_INT:
+				if (head->info[m.code].ival!=value_entry->value.ival) {
+					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,KRED "FAIL" KNON " (int), %s expected %d but is %d\n", m.name, value_entry->value.ival, head->info[m.code].ival);
+					append_to_buffer(message, iteration_message);
+					return 0;
+				}
+				else {
+					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,KGRN "SUCCESS" KNON ", query num %d, %s is %d\n", i, m.name, value_entry->value.ival);
+					append_to_buffer(message, iteration_message);
+				}
+				break;
+			case CONFIG_TYPE_INT64:
+				if (head->info[m.code].llval!=value_entry->value.llval) {
+					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,KRED "FAIL" KNON " (int64), %s expected %lld but is %lld\n", m.name, value_entry->value.llval, head->info[m.code].llval);
+					append_to_buffer(message, iteration_message);
+					return 0;
+				}
+				else {
+					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH, KGRN "SUCCESS" KNON ", query num %d, %s is %lld\n", i, m.name, value_entry->value.llval);
+					append_to_buffer(message, iteration_message);
+				}
+				break;
+			case CONFIG_TYPE_STRING:
+				if (!strcmp(head->info[m.code].sval, value_entry->value.sval)) {
+					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH, KRED "FAIL" KNON " (string), %s expected %s but is %s\n", m.name, value_entry->value.sval, head->info[m.code].sval);
+					append_to_buffer(message, iteration_message);
+					return 0;
+				}
+				else {
+					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,KGRN "SUCCESS" KNON ", query num %d, %s is %s\n", i, m.name, value_entry->value.sval);
+					append_to_buffer(message, iteration_message);
+				}
 		}
 		head=head->next;
 		i++;
@@ -45,44 +81,25 @@ int validate_info_response_code(queries_info_t *head, config_setting_t * entry, 
 }
 
 
-int validate_info_size_download(queries_info_t *head, config_setting_t * entry,  char **message) {
-	config_setting_t *value_entry = config_setting_get_member(entry, "value");
-	// message for one iteration in the repetition on the query
+int validate_info_same_port(queries_info_t *head, validations_mapping m, config_setting_t * setting_entry, char** message) {
 	char iteration_message[VALIDATION_MESSAGE_LENGTH];
-	if (value_entry == NULL) {
-		printf("value entry not found in validation\n");
-		return -1;
-	}
-	int i=0;
-	while (head!=NULL){
-		if (head->info.size_download!=value_entry->value.fval) {
-			//snprintf(*message, VALIDATION_MESSAGE_LENGTH, "FAIL, %s expected %d but is %d\n", "response code", value_entry->value.ival, head->info.response_code);
-			snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH, "FAIL, %s expected %f but is %f\n", "size download", value_entry->value.fval, head->info.size_download);
-			append_to_buffer(message, iteration_message);
-			return 0;
-		}
-		else {
-			//snprintf(*message, VALIDATION_MESSAGE_LENGTH, "SUCCESS, query num %d, %s is %d\n", "response code", value_entry->value.ival);
-			snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH, "SUCCESS, query num %d, %s is %d\n", i, "response code", value_entry->value.ival);
-			append_to_buffer(message, iteration_message);
-		}
-		head=head->next;
-		i++;
-	}
-}
-
-int validate_info_same_port(queries_info_t *head, config_setting_t * setting_entry) {
-	int port=-1;
+	long long port=-1;
 	while (head!=NULL) {
 		// store port used by first query
 		if (port < 0) {
-			port = head->info.local_port;
+			port = head->info[LOCAL_PORT].llval;
+			snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH, KGRN "SUCCESS" KNON " (same port), init to port %llu\n", port);
+			append_to_buffer(message, iteration_message);
 		}
 		// for subsequent queries, check the same port is used
 		else {
-			if (head->info.local_port != port){
+			if (head->info[LOCAL_PORT].llval != port){
+					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,KRED "FAIL" KNON " (same port): a different port was used!\n" KNON);
+					append_to_buffer(message, iteration_message);
 				return 0; 
 			}
+			snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH, KGRN "SUCCESS" KNON " (same port)\n");
+			append_to_buffer(message, iteration_message);
 		}
 		head=head->next;
 	}
@@ -92,14 +109,49 @@ int validate_info_same_port(queries_info_t *head, config_setting_t * setting_ent
 
 
 
-typedef struct validations_mapping{
-	char *name;
-	int (*f)(queries_info_t *head, config_setting_t * entry,  char **message);
-} validations_mapping;
+// validations_mapping type is defined in mbd-utils.h
+// These mappings specify:
+// - the name of the validation
+// - its identification code
+// - the function that will perform the validation
+// The identification code gives the index of the value in query info that
+// will be used for the comparison.
 
+// The informations about each query are stored in an array 
+// of type query_info_field, which is an enum type capable of containing 
+// every type of value returned by curl.
+// The index of the cell in the array in which an info is stored corresponds 
+// to the identification code of the validations_mapping.
+// For example, the "response_code" validation function will look in the 
+// query_info array at index RESPONSE_CODE to get the actual response code
+// result of the curl query.
+//
+// Here's what the code does:
+// - look at validation name, and get the mapping m for which m.name corresponds
+// - extract actual value of the query run at index m.code in the query_info array
+// - look at what value type is present in the validation entry in the config file. 
+//   This must be the same type as the actual value, and will determine which member 
+//   of the union type is extracted
+// - perform comparison of value from config file and the correct member of the union type
+//
+//
+//***********************************************************************
+// To add a validation:
+//***********************************************************************
+// - add an entry validations_mappings
+// - If working on a new field:
+//   - add an entry in validation_fields
+//   - increment QUERY_INFO_FIELD_NUMBER
+// - possible write function. For standard value equality validation, use the
+// standard function validate_info_value. If values extracted from repeated queries need
+// to be validated, look at validate_info_same_port.
+ 
 validations_mapping validations_mappings[]={
-	{"response_code", validate_info_response_code}
-	,{"size_download", validate_info_size_download}
+	{"response_code", RESPONSE_CODE, validate_info_value}
+	,{"size_download", SIZE_DOWNLOAD, validate_info_value}
+	,{"num_connects", NUM_CONNECTS, validate_info_value}
+	,{"local_port", LOCAL_PORT, validate_info_value}
+	,{"same_port", NONE, validate_info_same_port}
 };
 
 int validations_mappings_len = sizeof(validations_mappings)/sizeof(validations_mappings[0]);
@@ -141,10 +193,20 @@ void payload_specs_init(payload_specs* specs) {
 }
 
 void collect_curl_info(CURL *curl, queries_info_t *queries_info){
-	curl_easy_getinfo(curl,CURLINFO_LOCAL_PORT, &(queries_info->info.local_port));
-	curl_easy_getinfo(curl,CURLINFO_NUM_CONNECTS, &(queries_info->info.num_connects));
-	curl_easy_getinfo(curl,CURLINFO_RESPONSE_CODE, &(queries_info->info.response_code));
-	curl_easy_getinfo(curl,CURLINFO_SIZE_DOWNLOAD, &(queries_info->info.size_download));
+	long l;
+	int i;
+	double d;
+	curl_easy_getinfo(curl,CURLINFO_LOCAL_PORT, &l);
+	queries_info->info[LOCAL_PORT].llval=l;
+
+	curl_easy_getinfo(curl,CURLINFO_NUM_CONNECTS, &l);
+	queries_info->info[NUM_CONNECTS].llval=l;
+
+	curl_easy_getinfo(curl,CURLINFO_RESPONSE_CODE, &l);
+	queries_info->info[RESPONSE_CODE].llval=l;
+
+	curl_easy_getinfo(curl,CURLINFO_SIZE_DOWNLOAD, &d);
+	queries_info->info[SIZE_DOWNLOAD].fval=d;
 }
 
 // Finalise sha computation when payload received
@@ -389,7 +451,7 @@ int perform_validation(queries_info_t *queries_info,config_setting_t* entry, cha
 		return -1;
 	}
 
-	res = m.f(queries_info, entry, message);
+	res = m.f(queries_info, m, entry, message);
 	return res;
 }
 
@@ -870,7 +932,7 @@ int main(int argc, char *argv[])
 	    name_setting = config_setting_get_member(test, "name");
 	    if (name_setting!=NULL){
 		    name_str = config_setting_get_string(name_setting);
-		    printf("%s running...\n", name_str);
+		    printf(KYEL "%s running...\n" KNON, name_str);
 	    }
 	    // extract queries
 	    queries = config_setting_get_member(test, "queries");
@@ -949,7 +1011,7 @@ int main(int argc, char *argv[])
 				    // validate headers for http queries
 				    if (is_protocol(curl, "http://")) {
 					    if (!validate_http_headers(headers_specs, body_specs, &message)) {
-						    printf("FAILURE!\n");
+						    printf(KRED "FAILURE!\n" KNON);
 						    printf("%s", message);
 					    }
 					    else {
