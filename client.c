@@ -447,10 +447,6 @@ int perform_validation(queries_info_t *queries_info,config_setting_t* entry, cha
 		exit(1);
 	}
 
-	if (value_entry == NULL) {
-		return -1;
-	}
-
 	res = m.f(queries_info, m, entry, message);
 	return res;
 }
