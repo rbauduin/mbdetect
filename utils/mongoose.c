@@ -14,7 +14,7 @@
 //
 // Alternatively, you can license this library under a commercial
 // license, as set out in <http://cesanta.com/>.
-
+#define NS_ENABLE_IPV6 1
 #ifdef NOEMBED_NET_SKELETON
 #include "net_skeleton.h"
 #else
@@ -658,7 +658,9 @@ static int ns_parse_address(const char *str, union socket_address *sa,
     ns_resolve2(host, &sa->sin.sin_addr);
   } else if (sscanf(str, "%u%n", &port, &len) == 1) {
     // If only port is specified, bind to IPv4, INADDR_ANY
-    sa->sin.sin_port = htons((uint16_t) port);
+    //sa->sin.sin_port = htons((uint16_t) port);
+    sa->sin6.sin6_family = AF_INET6;
+    sa->sin6.sin6_port = htons((uint16_t) port);
   }
 
   if (*use_ssl && (sscanf(str + len, ":%99[^:]:%99[^:]%n", cert, ca, &n) == 2 ||
