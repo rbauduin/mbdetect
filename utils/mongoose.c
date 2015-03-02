@@ -130,7 +130,6 @@ typedef struct _stati64 ns_stat_t;
 typedef int sock_t;
 typedef struct stat ns_stat_t;
 #endif
-
 #ifdef NS_ENABLE_DEBUG
 #define DBG(x) do { printf("%-20s ", __func__); printf x; putchar('\n'); \
   fflush(stdout); } while(0)
@@ -4645,6 +4644,7 @@ static void on_recv_data(struct connection *conn) {
 	  // We need it here to generate our response
 	  char *end;
 	  // end of headers are located by this marker
+
 	  end=strstr(io->buf, "\r\n\r\n");
 	  start=io->buf;
 	  // skip http method line
@@ -4674,6 +4674,7 @@ static void on_recv_data(struct connection *conn) {
 	  else {
 		  // send 400 response, we don't recognise the request
 		  send_error_with_hash(&(conn->mg_conn), 400);
+		  close_local_endpoint(conn);
 	  }
   } else if (conn->request_len == 0 && io->len > MAX_REQUEST_SIZE) {
     send_http_error(conn, 413, NULL);
