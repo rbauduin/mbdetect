@@ -274,38 +274,38 @@ int validate_http_headers(payload_specs *headers_specs, payload_specs *body_spec
 	// FIXME: Maybe we can make this code more compact somehow
 	int res = validate_header(headers_specs->control_headers, HEADER_HEADERS_HASH, headers_specs->sha);
 	if (headers_specs->control_headers==NULL || res < 0 ) {
-		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "HEADERS SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n");
+		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), KRED "HEADERS SPECS NOT COLLECTED, NOTHING FOUND. FIX SERVER?\n" KNON);
 				return 0;
 	} 
 	if (res==HEADER_NOT_FOUND){
-		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "Headers %s not found!!\n", HEADER_HEADERS_HASH);
+		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), KRED "Headers %s not found!!\n" KNON, HEADER_HEADERS_HASH);
 	}
 	else if (!res) {
 		char *headers_h;
 		get_header_value(headers_specs->control_headers, HEADER_HEADERS_HASH, &headers_h);
-		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "DIFFERENT SHA, headers modified!!\n");
+		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), KRED "DIFFERENT SHA, headers modified!!\n" KNON);
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "transmitted headers hash: *%s*\n", headers_h);
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "computed headers sha256 :\n*%s*\n", headers_specs->sha);
 	}
 
 	res = validate_header(headers_specs->control_headers, HEADER_BODY_HASH, body_specs->sha);
 	if (res==HEADER_NOT_FOUND){
-		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "Headers %s not found!!\n", HEADER_BODY_HASH);
+		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), KRED "Headers %s not found!!\n" KNON, HEADER_BODY_HASH);
 	}
 	else if (!res) {
 		char *headers_h;
 		get_header_value(headers_specs->control_headers, HEADER_HEADERS_HASH, &headers_h);
-		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "DIFFERENT SHA, BODY modified!!\n");
+		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), KRED "DIFFERENT SHA, BODY modified!!\n" KNON);
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "transmitted body hash: *%s*\n", headers_h);
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "computed body sha256 :\n*%s*\n", body_specs->sha);
 	}
 
 	res = validate_header(headers_specs->control_headers, HEADER_SERVER_RCVD_HEADERS, "1");
 	if (res==HEADER_NOT_FOUND){
-		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "Headers %s not found!!\n", HEADER_SERVER_RCVD_HEADERS);
+		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), KRED "Headers %s not found!!\n" KNON, HEADER_SERVER_RCVD_HEADERS);
 	}
 	else if (res==NO_MATCH) {
-		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "SERVER GOT MODIFIED HEADERS!!\n");
+		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), KRED "SERVER GOT MODIFIED HEADERS!!\n" KNON);
 	}
 	//snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "HEADERS VALIDATIONS DONE\n");
 }
