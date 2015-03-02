@@ -754,13 +754,17 @@ void get_data_handlers(CURL* curl,
 }
 
 // builds the paths where the body and headers of the query will be saved
-void build_file_paths(config_setting_t *output_file, char** headers_path, char** body_path){
+void build_file_paths(config_setting_t *output_file, char** headers_path, char** body_path, int repeat){
 		// the base_path is found in the config file. To that
 		// we append -D for the body, and -H for the headers,
 		// and we have the files paths where we write to
 		const char* base_path = config_setting_get_string(output_file);
 		// length of the paths we will write to, ie with the -H and -D suffix appended
-		int final_path_len = strlen(base_path)+2;
+		// and 3 digits repetition number with separator
+		int final_path_len = strlen(base_path)+2+3+1;
+		char repeat_str[5];
+		snprintf(repeat_str, 5, ".%03d", repeat);
+
 
 		// +1 for \0
 		*headers_path = malloc(final_path_len+1);
@@ -769,9 +773,11 @@ void build_file_paths(config_setting_t *output_file, char** headers_path, char**
 		// concatenate path and suffix
 		strncpy(*headers_path, base_path, final_path_len+1);
 		strncat(*headers_path, "-H", final_path_len+1);
+		strncat(*headers_path, repeat_str, 4);
 
 		strncpy(*body_path, base_path, final_path_len+1);
 		strncat(*body_path, "-D", final_path_len+1);
+		strncat(*body_path, repeat_str, 4);
 }
 
 
@@ -802,7 +808,7 @@ void setup_payload_spec_file(payload_specs *specs, char* path) {
 }
 
 // sets up things to handle the data reaceived by curl
-void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs, payload_specs *body_specs){
+void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs, payload_specs *body_specs, int repeat){
 	
 
 	// output_file setting
@@ -828,7 +834,7 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 
 		// setup the config structure passed to successive call of the callback
 		// get paths where to save headers and body respectively
-		build_file_paths(output_file, &headers_path, &body_path);
+		build_file_paths(output_file, &headers_path, &body_path, repeat);
 
 		// open file handle, setup struct and passit to curl
 		// Body
@@ -989,7 +995,7 @@ int main(int argc, char *argv[])
 			    // set options and headers
 			    control_header *additional_headers=NULL;
 			    set_options(curl, query, &additional_headers);
-			    set_output(curl, query, headers_specs, body_specs);
+			    set_output(curl, query, headers_specs, body_specs, l);
 			    curl_headers=NULL;
 			    set_headers(curl, query, curl_headers, additional_headers);
 
