@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <libconfig.h>
 #include "utils/mbd_utils.h"
+#include "utils/mbd_version.h"
 
 // libsodium for hash computation
 #include <sodium.h>
@@ -669,8 +670,17 @@ int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers, 
 		headers = curl_slist_append(headers, header_line); 
 
 	}
-	//headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded"); 
-	//headers = curl_slist_append(headers, "Content-Length: 20"); 
+
+	// name "X-Commit": 8
+	// ": ": +2
+	// hash: +40
+	// "\0": +1
+	char commit_header[8+2+40+1];
+	snprintf(commit_header, sizeof(commit_header), "X-Commit: %s", GIT_COMMIT);
+	add_sha_headers_content(&headers_state,commit_header);
+	fwrite(commit_header, strlen(commit_header), 1, f);
+	headers = curl_slist_append(headers, commit_header); 
+
 	fclose(f);
 	// sha string
 	char sha[crypto_hash_sha256_BYTES*2+1];

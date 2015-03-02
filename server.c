@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <sodium.h>
 #include "utils/mbd_utils.h"
+#include "utils/mbd_version.h"
 #include <sys/stat.h>
 #include "utils/mongoose.h"
 
@@ -103,6 +104,7 @@ void generate_content(struct mg_connection *conn, char** headers, char** body) {
 	headers_buffer_size = set_header(headers, headers_buffer_size, &headers_state, "X-TeSt","WiTnEsS");
 	headers_buffer_size = set_header(headers, headers_buffer_size, &headers_state, "X-H-TEST","test control header");
 	headers_buffer_size = set_header(headers, headers_buffer_size, &headers_state, "X-H-RETEST","test control header");
+	headers_buffer_size = set_header(headers, headers_buffer_size, &headers_state, "X-Commit",GIT_COMMIT);
 	headers_buffer_size = set_header_line(headers, headers_buffer_size, &headers_state, "Transfer-Encoding: chunked\r\n");
 
 	// Check received headers
