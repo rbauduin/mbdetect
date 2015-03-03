@@ -892,11 +892,10 @@ void setup_payload_spec_file(payload_specs *specs, char* path) {
 }
 
 // sets up things to handle the data reaceived by curl
-void set_output(CURL* curl, config_setting_t *query, payload_specs *headers_specs, payload_specs *body_specs, config_setting_t *test, int repeat){
-	
+void set_output(CURL* curl, config_setting_t *output_file, payload_specs *headers_specs, payload_specs *body_specs, config_setting_t *test, int repeat){
+
 
 	// output_file setting
-	config_setting_t *output_file = config_setting_get_member(query, "output_file");
 	config_setting_t *test_id_setting = config_setting_get_member(test, "id");
 	if (test_id_setting == NULL) {
 		printf("The test has no id, this is required!\n");
@@ -917,23 +916,26 @@ void set_output(CURL* curl, config_setting_t *query, payload_specs *headers_spec
 	crypto_hash_sha256_init(&(headers_specs->sha_state));
 
 	// discard data if output_file is "none"
-	const char *output_str = config_setting_get_string(output_file);
-	if (output_str!=NULL && !strcmp(output_str,DISCARD_OUTPUT)){
-		set_curl_data_handlers(curl,discard_data_function,headers_specs, body_specs );
+	// immediately return in that case
+	if (output_file!=NULL) {
+		const char *output_str = config_setting_get_string(output_file);
+		if (!strcmp(output_str,DISCARD_OUTPUT)){
+			set_curl_data_handlers(curl,discard_data_function,headers_specs, body_specs );
+			return;
+		}
 	}
-	else {
-		// setup the config structure passed to successive call of the callback
-		// get paths where to save headers and body respectively
-		build_file_paths(output_file, &headers_path, &body_path, test_id, repeat);
+	// we get here either if output_file is NULL, or it is not NULL but different from DISCARD_OUTPUT
+	// setup the config structure passed to successive call of the callback
+	// get paths where to save headers and body respectively
+	build_file_paths(output_file, &headers_path, &body_path, test_id, repeat);
 
-		// open file handle, setup struct and passit to curl
-		// Body
-		setup_payload_spec_file(body_specs, body_path);
-		// Headers
-		setup_payload_spec_file(headers_specs, headers_path);
+	// open file handle, setup struct and passit to curl
+	// Body
+	setup_payload_spec_file(body_specs, body_path);
+	// Headers
+	setup_payload_spec_file(headers_specs, headers_path);
 
-		set_curl_data_handlers(curl,write_in_file_function, headers_specs, body_specs);
-	}
+	set_curl_data_handlers(curl,write_in_file_function, headers_specs, body_specs);
 }
 
 // cleans things up when curl query is done. 
@@ -970,7 +972,7 @@ int main(int argc, char *argv[])
   // config root
   config_t cfg;
   // tests list entry
-  config_setting_t *tests;
+  config_setting_t *tests, *output_file;
   // number of tests and index in loop
   int tests_count, i;
   //test entry and test name string
@@ -1019,6 +1021,7 @@ int main(int argc, char *argv[])
   config_read = read_config(tests_file, &cfg);
   if(config_read==0) {
     //extract tests
+    output_file = config_lookup(&cfg, "output_file");
     tests = config_lookup(&cfg, "tests");
     if(tests != NULL) {
       tests_count = config_setting_length(tests);
@@ -1088,7 +1091,7 @@ int main(int argc, char *argv[])
 			    // set options and headers
 			    control_header *additional_headers=NULL;
 			    set_options(curl, query, &additional_headers);
-			    set_output(curl, query, headers_specs, body_specs, test, l);
+			    set_output(curl, output_file, headers_specs, body_specs, test, l);
 			    curl_headers=NULL;
 			    set_headers(curl, query, curl_headers, additional_headers);
 
