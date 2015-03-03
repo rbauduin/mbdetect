@@ -5,6 +5,8 @@
 #include <libconfig.h>
 #include "utils/mbd_utils.h"
 #include "utils/mbd_version.h"
+#include <uuid/uuid.h>
+
 
 // libsodium for hash computation
 #include <sodium.h>
@@ -157,6 +159,9 @@ validations_mapping validations_mappings[]={
 
 int validations_mappings_len = sizeof(validations_mappings)/sizeof(validations_mappings[0]);
 
+
+// This maps the curl options from their name to their actual value, eg "CURLOPT_URL" to CURLOPT_URL.
+// It also specifies the type of data the option expects
 
 typedef struct {
 	char *name;
@@ -507,6 +512,36 @@ int find_code(const char* option) {
 
 }
 
+// build run id with a uuid
+void get_run_id(char **id) {
+	uuid_t uuid;
+
+	// uuid as string
+	static char *uuid_str;
+	// indicates if uuid was already generated
+	static int valid = 0;
+	// loop index
+	size_t i; 
+	
+	if (valid) {
+		*id = uuid_str;
+	}
+	else {
+		uuid_generate_time(uuid);
+		uuid_str= malloc(sizeof(uuid)*2+1);
+		uuid_str[0]='\0';
+		char part[3];
+		for (i = 0; i < sizeof uuid && i < RUN_ID_SIZE/2; i ++) {
+			sprintf(part, "%02x", uuid[i]);
+			strncat(uuid_str, part, 2);
+		}
+		*id=uuid_str;
+		valid = 1;
+	}
+	
+
+
+}
 
 // read the config file containing test specs
 int read_config(char* path, config_t * cfg) {
@@ -681,6 +716,16 @@ int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers, 
 	fwrite(commit_header, strlen(commit_header), 1, f);
 	headers = curl_slist_append(headers, commit_header); 
 
+	// header with run_id
+	char run_header[32];
+	char *run_id;
+	get_run_id(&run_id);
+	snprintf(run_header, sizeof(run_header), "X-Run-ID: %s", run_id);
+	add_sha_headers_content(&headers_state,run_header);
+	fwrite(run_header, strlen(run_header), 1, f);
+	headers = curl_slist_append(headers, run_header); 
+
+
 	fclose(f);
 	// sha string
 	char sha[crypto_hash_sha256_BYTES*2+1];
@@ -759,12 +804,43 @@ void get_data_handlers(CURL* curl,
 	}
 }
 
+
+// Extract the output dir from the config file, or sets it by default to /tmp
+void get_base_dir(config_setting_t *output_file, char **base_dir) {
+	// if not output file, save in /tmp by default
+	*base_dir=(char *) malloc(MAX_PATH_SIZE);
+	if (output_file==NULL){
+		// "/tmp" + '\0'
+		strcpy(*base_dir,"/tmp");
+	}
+	else {
+		strcpy(*base_dir,config_setting_get_string(output_file));
+	}
+}
+
+
+
 // builds the paths where the body and headers of the query will be saved
-void build_file_paths(config_setting_t *output_file, char** headers_path, char** body_path, int repeat){
+void build_file_paths(config_setting_t *output_file, char** headers_path, char** body_path, const char *test_id, int repeat){
 		// the base_path is found in the config file. To that
 		// we append -D for the body, and -H for the headers,
 		// and we have the files paths where we write to
-		const char* base_path = config_setting_get_string(output_file);
+		char *base_path;
+		get_base_dir(output_file, &base_path);
+
+		char *run_id;
+		get_run_id(&run_id);
+
+		// append run_id as directory
+		strncat(base_path, "/", 1);
+		strncat(base_path, run_id, strlen(run_id));
+		//this is the run path 
+		mkpath(base_path);
+
+		// append test_id, which is the start of the file name
+		strncat(base_path, "/", 1);
+		strncat(base_path, test_id, strlen(test_id));
+		
 		// length of the paths we will write to, ie with the -H and -D suffix appended
 		// and 3 digits repetition number with separator
 		int final_path_len = strlen(base_path)+2+3+1;
@@ -776,14 +852,16 @@ void build_file_paths(config_setting_t *output_file, char** headers_path, char**
 		*headers_path = malloc(final_path_len+1);
 		*body_path = malloc(final_path_len+1);
 
-		// concatenate path and suffix
+		// concatenate path and suffix. First repetition, then header/data flag
 		strncpy(*headers_path, base_path, final_path_len+1);
-		strncat(*headers_path, "-H", final_path_len+1);
 		strncat(*headers_path, repeat_str, 4);
+		strncat(*headers_path, "-H", final_path_len+1);
 
 		strncpy(*body_path, base_path, final_path_len+1);
-		strncat(*body_path, "-D", final_path_len+1);
 		strncat(*body_path, repeat_str, 4);
+		strncat(*body_path, "-D", final_path_len+1);
+
+		free(base_path);
 }
 
 
@@ -814,11 +892,17 @@ void setup_payload_spec_file(payload_specs *specs, char* path) {
 }
 
 // sets up things to handle the data reaceived by curl
-void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs, payload_specs *body_specs, int repeat){
+void set_output(CURL* curl, config_setting_t *query, payload_specs *headers_specs, payload_specs *body_specs, config_setting_t *test, int repeat){
 	
 
 	// output_file setting
-	config_setting_t *output_file = config_setting_get_member(test, "output_file");
+	config_setting_t *output_file = config_setting_get_member(query, "output_file");
+	config_setting_t *test_id_setting = config_setting_get_member(test, "id");
+	if (test_id_setting == NULL) {
+		printf("The test has no id, this is required!\n");
+		exit(1);
+	}
+	const char *test_id = config_setting_get_string(test_id_setting);
 	// path string retrieved from output_file setting
 	char *headers_path, *body_path;
 
@@ -832,15 +916,15 @@ void set_output(CURL* curl, config_setting_t *test, payload_specs *headers_specs
 	crypto_hash_sha256_init(&(body_specs->sha_state));
 	crypto_hash_sha256_init(&(headers_specs->sha_state));
 
-	// discard data if no output_file present
-	if (output_file==NULL){
+	// discard data if output_file is "none"
+	const char *output_str = config_setting_get_string(output_file);
+	if (output_str!=NULL && !strcmp(output_str,DISCARD_OUTPUT)){
 		set_curl_data_handlers(curl,discard_data_function,headers_specs, body_specs );
 	}
 	else {
-
 		// setup the config structure passed to successive call of the callback
 		// get paths where to save headers and body respectively
-		build_file_paths(output_file, &headers_path, &body_path, repeat);
+		build_file_paths(output_file, &headers_path, &body_path, test_id, repeat);
 
 		// open file handle, setup struct and passit to curl
 		// Body
@@ -926,6 +1010,9 @@ int main(int argc, char *argv[])
   }
 
   printf("test file = %s\n", tests_file);
+  char* run_id;
+  get_run_id(&run_id);
+  printf("Run id is %s\n", run_id);
 
  
   // read config
@@ -1001,7 +1088,7 @@ int main(int argc, char *argv[])
 			    // set options and headers
 			    control_header *additional_headers=NULL;
 			    set_options(curl, query, &additional_headers);
-			    set_output(curl, query, headers_specs, body_specs, l);
+			    set_output(curl, query, headers_specs, body_specs, test, l);
 			    curl_headers=NULL;
 			    set_headers(curl, query, curl_headers, additional_headers);
 

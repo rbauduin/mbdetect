@@ -1,4 +1,6 @@
 - fix  *(end+4)='\0'; in mongoose.c on_recv_data
+- rename output_file to output_dir and move it to the root of the config file (same value for all tests)
+- add collection of what is sent to server. Currently only received data is collected
 - support non curl tests in config file
 - repeat tests with and without mptcp, with and without mptch checksum
 - collect data of the run on client and server. Add log function

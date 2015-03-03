@@ -1,19 +1,33 @@
 #include <sodium.h>
 #include <libconfig.h>
+// header names
 #define HEADER_HEADERS_HASH "X-NH-H-SHA256"
 #define HEADER_BODY_HASH "X-NH-D-SHA256"
-#define VALIDATION_MESSAGE_LENGTH 2048
+// header name sent by server to tell client if it received headers correctly
 #define HEADER_SERVER_RCVD_HEADERS "X-H-HDRRCVOK"
+
+#define VALIDATION_MESSAGE_LENGTH 2048
 #define MAX_HEADER_NAME_SIZE 512
 #define MAX_HEADER_VALUE_SIZE 512
 #define MAX_HEADER_SIZE 1024
 #define NOT_FOUND_BODY "File not found. This is a test server only, with not content available." 
+// return values
 #define NO_MATCH 0
 #define MATCH 1
+// erro codes
 #define HEADER_NOT_FOUND -1
 #define NULL_OPERANDS	-2
+// fantasy method name that is handled by our server
 #define HANDLED_400_METHOD "x20bliptupbam"
+// number of curl info items we handle
 #define QUERY_INFO_FIELD_NUMBER 4
+// value to give to output_file to discard all curl output 
+#define DISCARD_OUTPUT "none"
+// how many characters from the uuid to keep when building the run id
+// useful when testing to handle much shorter paths
+#define RUN_ID_SIZE 6
+// max length of path to which we can save run data
+#define MAX_PATH_SIZE 265
 // headers starting with this string are ignored the headers hash computation
 // currently only used for the fantasy HTTP method GIVE
 #define IGNORE_PREFIX_HEADER_HASH "GIVE"
