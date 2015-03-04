@@ -1014,7 +1014,7 @@ int main(int argc, char *argv[])
   printf("test file = %s\n", tests_file);
   char* run_id;
   get_run_id(&run_id);
-  printf("Run id is %s\n", run_id);
+  printf("Run id is " KMAG "%s\n" KNON, run_id);
 
  
   // read config
