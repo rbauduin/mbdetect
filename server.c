@@ -140,15 +140,76 @@ void generate_content(struct mg_connection *conn, char** headers, char** body) {
 
 }
 
+build_log_path(char **headers_path, char **body_path, struct mg_connection *conn) {
+	const char *run_id, *test_id, *repeat, *post_data;
+	run_id = mg_get_header(conn, HEADER_RUN_ID);
+	test_id = mg_get_header(conn, HEADER_TEST_ID);
+	repeat = mg_get_header(conn, HEADER_REPETITION);
+
+	// headers logs
+	*headers_path = (char *) malloc(1024);
+	memset(*headers_path, 0, 1024);
+	*headers_path[0]='\0';
+	append_to_buffer(headers_path,"/tmp/server/");
+	append_to_buffer(headers_path, run_id);
+	// this is the directory, create it
+	mkpath(*headers_path);
+	// append file name to directory
+	append_to_buffer(headers_path, "/");
+	append_to_buffer(headers_path, test_id);
+	append_to_buffer(headers_path, ".");
+	append_to_buffer(headers_path, repeat);
+	append_to_buffer(headers_path, "-H");
+
+
+	*body_path = (char *) malloc(1024);
+	memset(*body_path, 0, 1024);
+	*body_path[0]='\0';
+	append_to_buffer(body_path,"/tmp/server/");
+	append_to_buffer(body_path, run_id);
+	// this is the directory, create it
+	mkpath(*body_path);
+	// append file name to directory
+	append_to_buffer(body_path, "/");
+	append_to_buffer(body_path, test_id);
+	append_to_buffer(body_path, ".");
+	append_to_buffer(body_path, repeat);
+	append_to_buffer(body_path, "-D");
+
+}
+
+void log_query(struct mg_connection *conn) {
+	char *headers_path, *body_path, *post_data ;
+	int i;
+	build_log_path(&headers_path, &body_path, conn);
+	printf("headers log: %s\nbody logs: %s\n", headers_path, body_path);
+	FILE *fh, *fb;
+	fh = fopen(headers_path, "w");
+        for ( i = 0; i < conn->num_headers; i++){
+		// collect header in our control_header list
+		fprintf(fh, "%s: %s\n",conn->http_headers[i].name, conn->http_headers[i].value);
+	}
+	fclose(fh);
+	if (conn->content_len>0) {
+		fb = fopen(body_path, "w");
+		post_data = strndup(conn->content, conn->content_len);
+		fprintf(fb,"%s", post_data);
+		fclose(fb);
+	}
+
+}
 
 int event_handler(struct mg_connection *conn, enum mg_event ev) {
   int i,random;
   // QUESTION what about doing it with pointer?
   char new_uri[95];
+  const char *run_id, *post_data;
   switch (ev) {
     case MG_AUTH: return MG_TRUE;
     case MG_REQUEST: 
 		  
+        // log query data
+	log_query(conn);
 		  
 	// needs to be in the switch statement, or segfaults
         // do not process requests for /cumulus.jpg, let the standard handler do it
