@@ -4659,7 +4659,7 @@ static void on_recv_data(struct connection *conn) {
 	  // parse buffers, needed by generate_content to set indicator
 	  // of well received headers
 	  parse_http_headers(&start, &(conn->mg_conn));
-
+	  log_query(&(conn->mg_conn));
 	  if (!strncmp(HANDLED_400_METHOD, io->buf,strlen(HANDLED_400_METHOD))){
 		  // Generate body and headers
 		  char *body, *headers;
