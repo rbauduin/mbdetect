@@ -84,10 +84,14 @@ void add_sha_headers_content(crypto_hash_sha256_state *state, char* content){
 	crypto_hash_sha256_update(state, content, strlen(content));
 }
 
+void build_header_line(char (*header_line)[MAX_HEADER_SIZE], const char *name, const char *value){
+	memset(*header_line,0,sizeof(header_line));
+	snprintf(*header_line, MAX_HEADER_SIZE,"%s: %s", name, value);  
+}
+
 void add_sha_headers_components(crypto_hash_sha256_state *received_headers_state, const char* name, const char *value){
-	char header_line[1024];
-	memset(header_line,0,sizeof(header_line));
-	snprintf(header_line, 1024,"%s: %s", name, value);  
+	char header_line[MAX_HEADER_SIZE];
+	build_header_line(&header_line, name, value);  
 	add_sha_headers_content(received_headers_state,header_line);
 }
 

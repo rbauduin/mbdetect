@@ -5,6 +5,10 @@
 #define HEADER_BODY_HASH "X-NH-D-SHA256"
 // header name sent by server to tell client if it received headers correctly
 #define HEADER_SERVER_RCVD_HEADERS "X-H-HDRRCVOK"
+#define HEADER_RUN_ID "X-Run-ID"
+#define HEADER_TEST_ID "X-Test-ID"
+#define HEADER_COMMIT_HASH "X-Commit"
+#define HEADER_REPETITION  "X-Repeat-ID"
 
 #define VALIDATION_MESSAGE_LENGTH 2048
 #define MAX_HEADER_NAME_SIZE 512
@@ -27,7 +31,7 @@
 // useful when testing to handle much shorter paths
 #define RUN_ID_SIZE 6
 // max length of path to which we can save run data
-#define MAX_PATH_SIZE 265
+#define MAX_LOG_PATH_SIZE 265
 // headers starting with this string are ignored the headers hash computation
 // currently only used for the fantasy HTTP method GIVE
 #define IGNORE_PREFIX_HEADER_HASH "GIVE"

@@ -633,10 +633,42 @@ void set_options(CURL* curl, config_setting_t *test, control_header **additional
 	}
 }
 
+
+// get id of the test passed as argument
+const char * get_test_id(config_setting_t *test){
+	config_setting_t *test_id_setting = config_setting_get_member(test, "id");
+	if (test_id_setting == NULL) {
+		printf("The test has no id, this is required!\n");
+		exit(1);
+	}
+	return config_setting_get_string(test_id_setting);
+
+}
+
+
+// add a curl header line, adding it the the headers' sha, and writing it in the file handle f.
+// to not add it to the sha, or to not write to the file handle, pass NULL as their respective value
+void add_curl_sha_header(CURL *curl, crypto_hash_sha256_state *state, struct curl_slist **headers, const char *header_line, FILE *f){
+	if (state !=NULL) {
+		add_sha_headers_content(state,header_line);
+	}
+	*headers = curl_slist_append(*headers, header_line); 
+	if (f!=NULL) {
+		fwrite(header_line, strlen(header_line), 1, f);
+	}
+}
+
+// build a header line from the name and value received,
+// then pass that line to add_curl_sha_header
+void add_curl_sha_header_components(CURL *curl, crypto_hash_sha256_state *state, struct curl_slist **headers, const char *name, const char *value, FILE *f){
+	char header_line[MAX_HEADER_SIZE];
+	build_header_line(header_line, name, value);
+	add_curl_sha_header(curl, state, headers, (char*)header_line, f);
+}
 // set http headers sent by curl
 // additional_headers are to be set in addition of those found in the config file. 
 // This is notably use for POST headers
-int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers, control_header *additional_headers ){
+int set_headers(CURL* curl, config_setting_t *query, struct curl_slist* headers, config_setting_t *test, int repeat, control_header *additional_headers ){
 	// index, curl result, number of headers
 	int j,res, headers_count;
 	// the header string
@@ -656,15 +688,14 @@ int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers, 
 	
 	
 	// get headers from config file
-	config_setting_t *cfg_headers = config_setting_get_member(test, "headers");
+	config_setting_t *cfg_headers = config_setting_get_member(query, "headers");
 	//FIXME: if no header specified, need account for default headers by curl
 	if (cfg_headers!=NULL){
 		// iterate over the list of header strings and add each to the curl_slist *headers
 		headers_count = config_setting_length(cfg_headers);
 		for (j=0; j<headers_count; j++){
 			header=config_setting_get_string_elem(cfg_headers,j);
-			add_sha_headers_content(&headers_state,header);
-			headers = curl_slist_append(headers, header); 
+			add_curl_sha_header(curl, &headers_state, &headers, header, f);
 			// record if we have set the host header
 			if (!strncasecmp(header,"host: ", 6)) {
 				host_set = 1;
@@ -672,7 +703,6 @@ int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers, 
 			if (!strncasecmp(header,"accept: ", 8)) {
 				accept_set = 1;
 			}
-			fwrite(header, strlen(header), 1, f);
 		}
 	}
 
@@ -683,61 +713,50 @@ int set_headers(CURL* curl, config_setting_t *test, struct curl_slist* headers, 
 		if (!host_set){
 			char host_header[1024];
 			get_host_header(curl, &host_header);
-			headers = curl_slist_append(headers, host_header); 
-			add_sha_headers_content(&headers_state,host_header);
-			fwrite(host_header, strlen(host_header), 1, f);
+			add_curl_sha_header(curl, &headers_state, &headers, host_header, f);
 		}
 		if (!accept_set){
 			char accept_header[1024]="Accept: */*";
-			headers = curl_slist_append(headers, accept_header); 
-			add_sha_headers_content(&headers_state,accept_header);
-			fwrite(accept_header, strlen(accept_header), 1, f);
+			add_curl_sha_header(curl, &headers_state, &headers, accept_header, f);
 		}
 	}
+
+	// additional headers
 	control_header * head;
-	char header_line[MAX_HEADER_SIZE];
 	while (additional_headers!=NULL) {
 		head = additional_headers;
 		additional_headers=additional_headers->next;
-		snprintf(header_line, MAX_HEADER_SIZE, "%s: %s", head->name, head->value);
-		add_sha_headers_content(&headers_state,header_line);
-		fwrite(header_line, strlen(header_line), 1, f);
-		headers = curl_slist_append(headers, header_line); 
-
+		add_curl_sha_header_components(curl, &headers_state, &headers, head->name, head->value, f);
 	}
 
-	// name "X-Commit": 8
-	// ": ": +2
-	// hash: +40
-	// "\0": +1
-	char commit_header[8+2+40+1];
-	snprintf(commit_header, sizeof(commit_header), "X-Commit: %s", GIT_COMMIT);
-	add_sha_headers_content(&headers_state,commit_header);
-	fwrite(commit_header, strlen(commit_header), 1, f);
-	headers = curl_slist_append(headers, commit_header); 
+	// header with commit hash (software version)
+	add_curl_sha_header_components(curl, &headers_state, &headers, HEADER_COMMIT_HASH, GIT_COMMIT, f);
+
+	// header with test_id
+        const char* test_id = get_test_id(test);
+	add_curl_sha_header_components(curl, &headers_state, &headers, HEADER_TEST_ID, test_id, f);
+
+	// header with repetition number
+	char r[4];
+	snprintf(r,4, "%03d", repeat);
+	add_curl_sha_header_components(curl, &headers_state, &headers, HEADER_REPETITION, r, f);
 
 	// header with run_id
-	char run_header[32];
 	char *run_id;
 	get_run_id(&run_id);
-	snprintf(run_header, sizeof(run_header), "X-Run-ID: %s", run_id);
-	add_sha_headers_content(&headers_state,run_header);
-	fwrite(run_header, strlen(run_header), 1, f);
-	headers = curl_slist_append(headers, run_header); 
+	add_curl_sha_header_components(curl, &headers_state, &headers, HEADER_RUN_ID, run_id, f);
 
 
-	fclose(f);
 	// sha string
 	char sha[crypto_hash_sha256_BYTES*2+1];
         // string of header containing sha.
 	// +2 : ": "
 	// +strlen(HEADER_HEADERS_HASH): name of the header
 	char sha_header[crypto_hash_sha256_BYTES*2+1+2+strlen(HEADER_HEADERS_HASH)];
-	// compute sha
+	// compute sha and add header
 	sha_from_state(&headers_state,&sha);
-	// build header and add it the the curl headers
-	snprintf(sha_header, sizeof(sha_header), "%s: %s", HEADER_HEADERS_HASH, sha);
-	headers = curl_slist_append(headers, sha_header); 
+	add_curl_sha_header_components(curl, NULL, &headers, HEADER_HEADERS_HASH, sha, f);
+	fclose(f);
 	
 	// add the headers list to curl
     	res = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers); 
@@ -808,7 +827,7 @@ void get_data_handlers(CURL* curl,
 // Extract the output dir from the config file, or sets it by default to /tmp
 void get_base_dir(config_setting_t *output_file, char **base_dir) {
 	// if not output file, save in /tmp by default
-	*base_dir=(char *) malloc(MAX_PATH_SIZE);
+	*base_dir=(char *) malloc(MAX_LOG_PATH_SIZE);
 	if (output_file==NULL){
 		// "/tmp" + '\0'
 		strcpy(*base_dir,"/tmp");
@@ -895,13 +914,8 @@ void setup_payload_spec_file(payload_specs *specs, char* path) {
 void set_output(CURL* curl, config_setting_t *output_file, payload_specs *headers_specs, payload_specs *body_specs, config_setting_t *test, int repeat){
 
 
-	// output_file setting
-	config_setting_t *test_id_setting = config_setting_get_member(test, "id");
-	if (test_id_setting == NULL) {
-		printf("The test has no id, this is required!\n");
-		exit(1);
-	}
-	const char *test_id = config_setting_get_string(test_id_setting);
+	// extract test id
+	const char *test_id = get_test_id(test);
 	// path string retrieved from output_file setting
 	char *headers_path, *body_path;
 
@@ -1093,7 +1107,7 @@ int main(int argc, char *argv[])
 			    set_options(curl, query, &additional_headers);
 			    set_output(curl, output_file, headers_specs, body_specs, test, l);
 			    curl_headers=NULL;
-			    set_headers(curl, query, curl_headers, additional_headers);
+			    set_headers(curl, query, curl_headers, test, l, additional_headers);
 
 			    // Perform query
 			    res = curl_easy_perform(curl);
