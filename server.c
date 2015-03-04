@@ -202,6 +202,7 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
   int i,random;
   // QUESTION what about doing it with pointer?
   char new_uri[95];
+  const char *run_id, *post_data;
   switch (ev) {
     case MG_AUTH: return MG_TRUE;
     case MG_REQUEST: 
