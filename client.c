@@ -576,7 +576,7 @@ void handle_post_options(control_header **additional_headers, const char * name,
 
 // set curl options
 // headers to be set later by set_headers are collected in additional_header
-void set_options(CURL* curl, config_setting_t *test, control_header **additional_headers){
+void set_options(CURL* curl, config_setting_t *query, config_setting_t *test, int repeat, control_header **additional_headers){
 	int j, options_count;
 	// an option, its name and its value
 	config_setting_t *option, *name, *value;
@@ -593,9 +593,11 @@ void set_options(CURL* curl, config_setting_t *test, control_header **additional
 	// set the options required for the code to work correctly
 	// do not include headers when printing the body
 	curl_easy_setopt(curl, CURLOPT_HEADER, 0L); 
+	// get all debug info possible
+	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 
 	// iterate over options
-	options = config_setting_get_member(test, "options");
+	options = config_setting_get_member(query, "options");
 	options_count = config_setting_length(options);
 	for (j=0; j<options_count; j++){
 		// get the option's entry, its name item and its value item.
@@ -648,22 +650,19 @@ const char * get_test_id(config_setting_t *test){
 
 // add a curl header line, adding it the the headers' sha, and writing it in the file handle f.
 // to not add it to the sha, or to not write to the file handle, pass NULL as their respective value
-void add_curl_sha_header(CURL *curl, crypto_hash_sha256_state *state, struct curl_slist **headers, const char *header_line, FILE *f){
+void add_curl_sha_header(CURL *curl, crypto_hash_sha256_state *state, struct curl_slist **headers, const char *header_line){
 	if (state !=NULL) {
 		add_sha_headers_content(state,header_line);
 	}
 	*headers = curl_slist_append(*headers, header_line); 
-	if (f!=NULL) {
-		fwrite(header_line, strlen(header_line), 1, f);
-	}
 }
 
 // build a header line from the name and value received,
 // then pass that line to add_curl_sha_header
-void add_curl_sha_header_components(CURL *curl, crypto_hash_sha256_state *state, struct curl_slist **headers, const char *name, const char *value, FILE *f){
+void add_curl_sha_header_components(CURL *curl, crypto_hash_sha256_state *state, struct curl_slist **headers, const char *name, const char *value){
 	char header_line[MAX_HEADER_SIZE];
 	build_header_line(header_line, name, value);
-	add_curl_sha_header(curl, state, headers, (char*)header_line, f);
+	add_curl_sha_header(curl, state, headers, (char*)header_line);
 }
 // set http headers sent by curl
 // additional_headers are to be set in addition of those found in the config file. 
@@ -681,9 +680,6 @@ int set_headers(CURL* curl, config_setting_t *query, struct curl_slist* headers,
 
 
 
-	FILE *f;
-	f = fopen("/tmp/curl-headers","w");
-
 	int host_set=0, accept_set=0;
 	
 	
@@ -695,7 +691,7 @@ int set_headers(CURL* curl, config_setting_t *query, struct curl_slist* headers,
 		headers_count = config_setting_length(cfg_headers);
 		for (j=0; j<headers_count; j++){
 			header=config_setting_get_string_elem(cfg_headers,j);
-			add_curl_sha_header(curl, &headers_state, &headers, header, f);
+			add_curl_sha_header(curl, &headers_state, &headers, header);
 			// record if we have set the host header
 			if (!strncasecmp(header,"host: ", 6)) {
 				host_set = 1;
@@ -713,11 +709,11 @@ int set_headers(CURL* curl, config_setting_t *query, struct curl_slist* headers,
 		if (!host_set){
 			char host_header[1024];
 			get_host_header(curl, &host_header);
-			add_curl_sha_header(curl, &headers_state, &headers, host_header, f);
+			add_curl_sha_header(curl, &headers_state, &headers, host_header);
 		}
 		if (!accept_set){
 			char accept_header[1024]="Accept: */*";
-			add_curl_sha_header(curl, &headers_state, &headers, accept_header, f);
+			add_curl_sha_header(curl, &headers_state, &headers, accept_header);
 		}
 	}
 
@@ -726,25 +722,25 @@ int set_headers(CURL* curl, config_setting_t *query, struct curl_slist* headers,
 	while (additional_headers!=NULL) {
 		head = additional_headers;
 		additional_headers=additional_headers->next;
-		add_curl_sha_header_components(curl, &headers_state, &headers, head->name, head->value, f);
+		add_curl_sha_header_components(curl, &headers_state, &headers, head->name, head->value);
 	}
 
 	// header with commit hash (software version)
-	add_curl_sha_header_components(curl, &headers_state, &headers, HEADER_COMMIT_HASH, GIT_COMMIT, f);
+	add_curl_sha_header_components(curl, &headers_state, &headers, HEADER_COMMIT_HASH, GIT_COMMIT);
 
 	// header with test_id
         const char* test_id = get_test_id(test);
-	add_curl_sha_header_components(curl, &headers_state, &headers, HEADER_TEST_ID, test_id, f);
+	add_curl_sha_header_components(curl, &headers_state, &headers, HEADER_TEST_ID, test_id);
 
 	// header with repetition number
 	char r[4];
 	snprintf(r,4, "%03d", repeat);
-	add_curl_sha_header_components(curl, &headers_state, &headers, HEADER_REPETITION, r, f);
+	add_curl_sha_header_components(curl, &headers_state, &headers, HEADER_REPETITION, r);
 
 	// header with run_id
 	char *run_id;
 	get_run_id(&run_id);
-	add_curl_sha_header_components(curl, &headers_state, &headers, HEADER_RUN_ID, run_id, f);
+	add_curl_sha_header_components(curl, &headers_state, &headers, HEADER_RUN_ID, run_id);
 
 
 	// sha string
@@ -755,8 +751,7 @@ int set_headers(CURL* curl, config_setting_t *query, struct curl_slist* headers,
 	char sha_header[crypto_hash_sha256_BYTES*2+1+2+strlen(HEADER_HEADERS_HASH)];
 	// compute sha and add header
 	sha_from_state(&headers_state,&sha);
-	add_curl_sha_header_components(curl, NULL, &headers, HEADER_HEADERS_HASH, sha, f);
-	fclose(f);
+	add_curl_sha_header_components(curl, NULL, &headers, HEADER_HEADERS_HASH, sha);
 	
 	// add the headers list to curl
     	res = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers); 
@@ -837,48 +832,52 @@ void get_base_dir(config_setting_t *output_file, char **base_dir) {
 	}
 }
 
+void get_run_log_dir(config_setting_t *output_file, char **run_path){
+		get_base_dir(output_file, run_path);
 
+		char *run_id;
+		get_run_id(&run_id);
+
+		// append run_id as directory
+		strncat(*run_path, "/", 1);
+		strncat(*run_path, run_id, strlen(run_id));
+
+}
+
+// log_dir is the log directory for this run
+// test_id is the id of this test as found in the config file
+// repeat is the repetition number of this query
+// suffix is the suffix to add to the filename. Use to add "-H" and "-D"
+build_log_file_path(const char *log_dir, const char *test_id, int repeat, const char *suffix, char **path) {
+	// allocate and clean memory (needed!)
+	*path = (char *) malloc(1024);
+	memset(*path, 0, 1024);
+	// copu log_dir value to destination string and append "/"
+	append_to_buffer(path, log_dir);
+	append_to_buffer(path, "/");
+	// append the test_id and repetition number
+	append_to_buffer(path, test_id);
+	char repeat_str[5];
+	snprintf(repeat_str, 5, ".%03d", repeat);
+	append_to_buffer(path, repeat_str);
+	// append suffix
+	append_to_buffer(path, suffix);
+}
 
 // builds the paths where the body and headers of the query will be saved
 void build_file_paths(config_setting_t *output_file, char** headers_path, char** body_path, const char *test_id, int repeat){
 		// the base_path is found in the config file. To that
 		// we append -D for the body, and -H for the headers,
 		// and we have the files paths where we write to
+
 		char *base_path;
-		get_base_dir(output_file, &base_path);
-
-		char *run_id;
-		get_run_id(&run_id);
-
-		// append run_id as directory
-		strncat(base_path, "/", 1);
-		strncat(base_path, run_id, strlen(run_id));
-		//this is the run path 
+		get_run_log_dir(output_file, &base_path);
+		//this is the run log path 
 		mkpath(base_path);
 
-		// append test_id, which is the start of the file name
-		strncat(base_path, "/", 1);
-		strncat(base_path, test_id, strlen(test_id));
-		
-		// length of the paths we will write to, ie with the -H and -D suffix appended
-		// and 3 digits repetition number with separator
-		int final_path_len = strlen(base_path)+2+3+1;
-		char repeat_str[5];
-		snprintf(repeat_str, 5, ".%03d", repeat);
-
-
-		// +1 for \0
-		*headers_path = malloc(final_path_len+1);
-		*body_path = malloc(final_path_len+1);
-
-		// concatenate path and suffix. First repetition, then header/data flag
-		strncpy(*headers_path, base_path, final_path_len+1);
-		strncat(*headers_path, repeat_str, 4);
-		strncat(*headers_path, "-H", final_path_len+1);
-
-		strncpy(*body_path, base_path, final_path_len+1);
-		strncat(*body_path, repeat_str, 4);
-		strncat(*body_path, "-D", final_path_len+1);
+		// build log file for received headers and body
+		build_log_file_path(base_path, test_id, repeat, "-D", body_path);
+		build_log_file_path(base_path, test_id, repeat, "-H", headers_path);
 
 		free(base_path);
 }
@@ -918,6 +917,21 @@ void set_output(CURL* curl, config_setting_t *output_file, payload_specs *header
 	const char *test_id = get_test_id(test);
 	// path string retrieved from output_file setting
 	char *headers_path, *body_path;
+
+	// FIXME : code duplicated from function build_file_paths. Should be improved
+	//configure curl debug logs
+	char *base_path;
+	get_run_log_dir(output_file, &base_path);
+	//this is the run log path 
+	mkpath(base_path);
+
+	// setup curl logs to file with -curl suffix
+	char * curl_logs_path;
+	build_log_file_path(base_path, test_id, repeat, "-curl", &curl_logs_path);
+	FILE *curl_logs=fopen(curl_logs_path, "w");
+	curl_easy_setopt(curl, CURLOPT_STDERR, curl_logs);
+	free(base_path);
+	free(curl_logs_path);
 
 	// pointers to function that will handle the data received
 	size_t (*discard_data_function)(void*, size_t, size_t, struct write_dest*);
@@ -1104,7 +1118,7 @@ int main(int argc, char *argv[])
 		    
 			    // set options and headers
 			    control_header *additional_headers=NULL;
-			    set_options(curl, query, &additional_headers);
+			    set_options(curl, query, test, l, &additional_headers);
 			    set_output(curl, output_file, headers_specs, body_specs, test, l);
 			    curl_headers=NULL;
 			    set_headers(curl, query, curl_headers, test, l, additional_headers);
