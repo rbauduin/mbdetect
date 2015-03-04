@@ -182,7 +182,6 @@ void log_query(struct mg_connection *conn) {
 	char *headers_path, *body_path, *post_data ;
 	int i;
 	build_log_path(&headers_path, &body_path, conn);
-	printf("headers log: %s\nbody logs: %s\n", headers_path, body_path);
 	FILE *fh, *fb;
 	fh = fopen(headers_path, "w");
         for ( i = 0; i < conn->num_headers; i++){
@@ -203,7 +202,6 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
   int i,random;
   // QUESTION what about doing it with pointer?
   char new_uri[95];
-  const char *run_id, *post_data;
   switch (ev) {
     case MG_AUTH: return MG_TRUE;
     case MG_REQUEST: 
