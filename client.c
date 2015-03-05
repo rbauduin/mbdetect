@@ -825,7 +825,7 @@ void get_base_dir(config_setting_t *output_file, char **base_dir) {
 	*base_dir=(char *) malloc(MAX_LOG_PATH_SIZE);
 	if (output_file==NULL){
 		// "/tmp" + '\0'
-		strcpy(*base_dir,"/tmp");
+		strcpy(*base_dir,DEFAULT_BASE_DIR);
 	}
 	else {
 		strcpy(*base_dir,config_setting_get_string(output_file));
