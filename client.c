@@ -820,20 +820,20 @@ void get_data_handlers(CURL* curl,
 
 
 // Extract the output dir from the config file, or sets it by default to /tmp
-void get_base_dir(config_setting_t *output_file, char **base_dir) {
+void get_base_dir(config_setting_t *output_dir, char **base_dir) {
 	// if not output file, save in /tmp by default
 	*base_dir=(char *) malloc(MAX_LOG_PATH_SIZE);
-	if (output_file==NULL){
+	if (output_dir==NULL){
 		// "/tmp" + '\0'
 		strcpy(*base_dir,DEFAULT_BASE_DIR);
 	}
 	else {
-		strcpy(*base_dir,config_setting_get_string(output_file));
+		strcpy(*base_dir,config_setting_get_string(output_dir));
 	}
 }
 
-void get_run_log_dir(config_setting_t *output_file, char **run_path){
-		get_base_dir(output_file, run_path);
+void get_run_log_dir(config_setting_t *output_dir, char **run_path){
+		get_base_dir(output_dir, run_path);
 
 		char *run_id;
 		get_run_id(&run_id);
@@ -865,13 +865,13 @@ build_log_file_path(const char *log_dir, const char *test_id, int repeat, const 
 }
 
 // builds the paths where the body and headers of the query will be saved
-void build_file_paths(config_setting_t *output_file, char** headers_path, char** body_path, const char *test_id, int repeat){
+void build_file_paths(config_setting_t *output_dir, char** headers_path, char** body_path, const char *test_id, int repeat){
 		// the base_path is found in the config file. To that
 		// we append -D for the body, and -H for the headers,
 		// and we have the files paths where we write to
 
 		char *base_path;
-		get_run_log_dir(output_file, &base_path);
+		get_run_log_dir(output_dir, &base_path);
 		//this is the run log path 
 		mkpath(base_path);
 
@@ -910,18 +910,18 @@ void setup_payload_spec_file(payload_specs *specs, char* path) {
 }
 
 // sets up things to handle the data reaceived by curl
-void set_output(CURL* curl, config_setting_t *output_file, payload_specs *headers_specs, payload_specs *body_specs, config_setting_t *test, int repeat){
+void set_output(CURL* curl, config_setting_t *output_dir, payload_specs *headers_specs, payload_specs *body_specs, config_setting_t *test, int repeat){
 
 
 	// extract test id
 	const char *test_id = get_test_id(test);
-	// path string retrieved from output_file setting
+	// path string retrieved from output_dir setting
 	char *headers_path, *body_path;
 
 	// FIXME : code duplicated from function build_file_paths. Should be improved
 	//configure curl debug logs
 	char *base_path;
-	get_run_log_dir(output_file, &base_path);
+	get_run_log_dir(output_dir, &base_path);
 	//this is the run log path 
 	mkpath(base_path);
 
@@ -943,19 +943,19 @@ void set_output(CURL* curl, config_setting_t *output_file, payload_specs *header
 	crypto_hash_sha256_init(&(body_specs->sha_state));
 	crypto_hash_sha256_init(&(headers_specs->sha_state));
 
-	// discard data if output_file is "none"
+	// discard data if output_dir is "none"
 	// immediately return in that case
-	if (output_file!=NULL) {
-		const char *output_str = config_setting_get_string(output_file);
+	if (output_dir!=NULL) {
+		const char *output_str = config_setting_get_string(output_dir);
 		if (!strcmp(output_str,DISCARD_OUTPUT)){
 			set_curl_data_handlers(curl,discard_data_function,headers_specs, body_specs );
 			return;
 		}
 	}
-	// we get here either if output_file is NULL, or it is not NULL but different from DISCARD_OUTPUT
+	// we get here either if output_dir is NULL, or it is not NULL but different from DISCARD_OUTPUT
 	// setup the config structure passed to successive call of the callback
 	// get paths where to save headers and body respectively
-	build_file_paths(output_file, &headers_path, &body_path, test_id, repeat);
+	build_file_paths(output_dir, &headers_path, &body_path, test_id, repeat);
 
 	// open file handle, setup struct and passit to curl
 	// Body
@@ -973,8 +973,8 @@ void clean_output(config_setting_t *test, payload_specs *headers_specs,payload_s
 	//control_headers_free(headers_specs->control_headers);
 	
 	// if there was output written to a file, clean stuff
-	config_setting_t *output_file = config_setting_get_member(test, "output_file");
-	if (output_file==NULL){
+	config_setting_t *output_dir = config_setting_get_member(test, "output_dir");
+	if (output_dir==NULL){
 	    return;
 	}
 	else {
@@ -1000,7 +1000,7 @@ int main(int argc, char *argv[])
   // config root
   config_t cfg;
   // tests list entry
-  config_setting_t *tests, *output_file;
+  config_setting_t *tests, *output_dir;
   // number of tests and index in loop
   int tests_count, i;
   //test entry and test name string
@@ -1049,7 +1049,7 @@ int main(int argc, char *argv[])
   config_read = read_config(tests_file, &cfg);
   if(config_read==0) {
     //extract tests
-    output_file = config_lookup(&cfg, "output_file");
+    output_dir = config_lookup(&cfg, "output_dir");
     tests = config_lookup(&cfg, "tests");
     if(tests != NULL) {
       tests_count = config_setting_length(tests);
@@ -1119,7 +1119,7 @@ int main(int argc, char *argv[])
 			    // set options and headers
 			    control_header *additional_headers=NULL;
 			    set_options(curl, query, test, l, &additional_headers);
-			    set_output(curl, output_file, headers_specs, body_specs, test, l);
+			    set_output(curl, output_dir, headers_specs, body_specs, test, l);
 			    curl_headers=NULL;
 			    set_headers(curl, query, curl_headers, test, l, additional_headers);
 
