@@ -184,6 +184,8 @@ size_t iobuf_append(struct iobuf *, const void *data, size_t data_size);
 void iobuf_remove(struct iobuf *, size_t data_size);
 void iobuf_resize(struct iobuf *, size_t new_size);
 
+
+
 // Callback function (event handler) prototype, must be defined by user.
 // Net skeleton will call event handler, passing events defined above.
 struct ns_connection;
@@ -273,6 +275,8 @@ int ns_resolve(const char *domain_name, char *ip_addr_buf, size_t buf_len);
 #endif // __cplusplus
 
 #endif // NS_SKELETON_HEADER_INCLUDED
+
+
 // Copyright (c) 2014 Cesanta Software Limited
 // All rights reserved
 //
@@ -1475,6 +1479,11 @@ struct connection {
 static void open_local_endpoint(struct connection *conn, int skip_user);
 static void close_local_endpoint(struct connection *conn);
 static void mg_ev_handler(struct ns_connection *nc, int ev, void *p);
+
+// mbd functions declarations
+void write_file(const char* path, const char* contents);
+void copy_file(const char* src, const char* dst);
+void log_response(struct mg_connection *conn, const char *headers, const char *body);
 
 static const struct {
   const char *extension;
@@ -5472,6 +5481,7 @@ void mbd_file_endpoint(struct connection *conn, const char *path, struct stat *s
   //printf("****\nFinal headers are:\n%s****", headers);
   //mg_printf(mg_conn, headers);
   ns_send(conn->ns_conn, headers, n);
+  log_response(&(conn->mg_conn), headers, path);
 
   if (!strcmp(conn->mg_conn.request_method, "HEAD")) {
     conn->ns_conn->flags |= NSF_FINISHED_SENDING_DATA;
@@ -5584,6 +5594,7 @@ int send_error_with_hash(struct mg_connection *mg_conn, int code) {
 	struct connection *conn = MG_CONN_2_CONN(mg_conn);
 	ns_send(conn->ns_conn, headers, headers_len);
 	ns_send(conn->ns_conn, body, body_len);
+	log_response(&(conn->mg_conn), headers, body);
 }
 
 // send content
@@ -5602,14 +5613,59 @@ void send_content(struct mg_connection * conn,char *body) {
 // and the complete body have to be provided
 // The empty line separating headers from body is added by the function
 void send_response(struct mg_connection *conn, char *headers, char *body) {
-  struct connection *c = MG_CONN_2_CONN(conn);
-		//send_content(conn, "HTTP/1.1 200 OK\r\n");
-		send_content(conn, headers);
-		//mg_write(conn, "Transfer-Encoding: chunked\r\n", 28);
-		mg_write(conn, "\r\n", 2);
-		c->ns_conn->flags |= MG_HEADERS_SENT;
-		// use mg_printf_data for chunked encoding
-		mg_printf_data(conn, body, strlen(body));
-		free(headers);
-		free(body);
+	struct connection *c = MG_CONN_2_CONN(conn);
+	//send_content(conn, "HTTP/1.1 200 OK\r\n");
+	send_content(conn, headers);
+	//mg_write(conn, "Transfer-Encoding: chunked\r\n", 28);
+	mg_write(conn, "\r\n", 2);
+	c->ns_conn->flags |= MG_HEADERS_SENT;
+	// use mg_printf_data for chunked encoding
+	mg_printf_data(conn, body, strlen(body));
+	log_response(conn, headers, body);
+	free(headers);
+	free(body);
+}
+//
+// write contents to file at path (append if exists), and close it.
+void write_file(const char* path, const char* contents) {
+	FILE *f=fopen(path, "a");
+	fwrite(contents, strlen(contents),1,f);
+	fclose(f);
+}
+
+// copy file from src to dst
+void copy_file(const char* src, const char* dst) {
+	char buf[BUFSIZ];
+	size_t size;
+	FILE* source = fopen(src, "rb");
+	FILE* dest = fopen(dst, "wb");
+	while (size = fread(buf, 1, BUFSIZ, source)) {
+		fwrite(buf, 1, size, dest);
+	}
+	fclose(source);
+	fclose(dest);
+}
+
+// log headers and body of the response to query received with connection conn
+// writes at the run's log location, with the test id and the repetition number
+void log_response(struct mg_connection *conn, const char *headers, const char *body) {
+	char *headers_path, *body_path, *post_data ;
+	if (headers!=NULL){
+		build_log_path(&headers_path, "-R-H", conn);
+		write_file(headers_path, headers);
+	}
+	if (body!=NULL){
+
+		build_log_path(&body_path, "-R-D", conn);
+
+		struct connection *c = MG_CONN_2_CONN(conn);
+		// detect if we deliver a file. That is if:
+		// - the boty is the path to an existing file
+		// - AND the endpoint_type is EP_FILE
+		if( access( body, F_OK ) != -1 && c->endpoint_type==EP_FILE ) {
+			copy_file(body,body_path);
+		} else {
+			write_file(body_path, body);
+		}
+	}
 }

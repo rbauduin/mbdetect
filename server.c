@@ -144,48 +144,34 @@ void generate_content(struct mg_connection *conn, char** headers, char** body) {
 
 }
 
-build_log_path(char **headers_path, char **body_path, struct mg_connection *conn) {
+build_log_path(char **path, char *suffix, struct mg_connection *conn) {
 	const char *run_id, *test_id, *repeat, *post_data;
 	run_id = mg_get_header(conn, HEADER_RUN_ID);
 	test_id = mg_get_header(conn, HEADER_TEST_ID);
 	repeat = mg_get_header(conn, HEADER_REPETITION);
 
 	// headers logs
-	*headers_path = (char *) malloc(1024);
-	memset(*headers_path, 0, 1024);
-	*headers_path[0]='\0';
-	append_to_buffer(headers_path,"/tmp/server/");
-	append_to_buffer(headers_path, run_id);
+	*path = (char *) malloc(1024);
+	memset(*path, 0, 1024);
+	*path[0]='\0';
+	append_to_buffer(path,DEFAULT_BASE_DIR);
+	append_to_buffer(path,"/server/");
+	append_to_buffer(path, run_id);
 	// this is the directory, create it
-	mkpath(*headers_path);
+	mkpath(*path);
 	// append file name to directory
-	append_to_buffer(headers_path, "/");
-	append_to_buffer(headers_path, test_id);
-	append_to_buffer(headers_path, ".");
-	append_to_buffer(headers_path, repeat);
-	append_to_buffer(headers_path, "-H");
-
-
-	*body_path = (char *) malloc(1024);
-	memset(*body_path, 0, 1024);
-	*body_path[0]='\0';
-	append_to_buffer(body_path,"/tmp/server/");
-	append_to_buffer(body_path, run_id);
-	// this is the directory, create it
-	mkpath(*body_path);
-	// append file name to directory
-	append_to_buffer(body_path, "/");
-	append_to_buffer(body_path, test_id);
-	append_to_buffer(body_path, ".");
-	append_to_buffer(body_path, repeat);
-	append_to_buffer(body_path, "-D");
-
+	append_to_buffer(path, "/");
+	append_to_buffer(path, test_id);
+	append_to_buffer(path, ".");
+	append_to_buffer(path, repeat);
+	append_to_buffer(path, suffix);
 }
 
 void log_query(struct mg_connection *conn) {
 	char *headers_path, *body_path, *post_data ;
 	int i;
-	build_log_path(&headers_path, &body_path, conn);
+	build_log_path(&headers_path, "-H", conn);
+	build_log_path(&body_path, "-D", conn);
 	FILE *fh, *fb;
 	fh = fopen(headers_path, "w");
         for ( i = 0; i < conn->num_headers; i++){

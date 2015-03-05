@@ -9,6 +9,8 @@
 #define HEADER_TEST_ID "X-Test-ID"
 #define HEADER_COMMIT_HASH "X-Commit"
 #define HEADER_REPETITION  "X-Repeat-ID"
+// where logs of runs will be kept
+#define DEFAULT_BASE_DIR "/tmp"
 
 #define VALIDATION_MESSAGE_LENGTH 2048
 #define MAX_HEADER_NAME_SIZE 512
