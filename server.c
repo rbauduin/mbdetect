@@ -1,3 +1,7 @@
+// This file is licensed under the terms of the GNU General Public License
+// version 2 as published by the Free Software Foundation. For the terms of
+// this license, see <http://www.gnu.org/licenses/>.
+
 #include "utils/mongoose.h"
 #include "string.h"
 #include <stdarg.h>
