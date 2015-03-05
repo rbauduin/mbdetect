@@ -1,14 +1,14 @@
 - fix  *(end+4)='\0'; in mongoose.c on_recv_data
-- rename output_file to output_dir and move it to the root of the config file (same value for all tests)
-- add collection of what is sent to server. Currently only received data is collected
 - support non curl tests in config file
 - repeat tests with and without mptcp, with and without mptch checksum
-- collect data of the run on client and server. Add log function
 - error handling
-- write headers and body of query repetitions in distinct files?
 
 
 - add control of headers in server code sending 404 [DONE]
 - generate control headers with 404 response [DONE]
 - compare actual to expected values, and control headers values [DONE]
 - collect the payload_specs of the subsequent repetition of a query in a linked list [DONE]
+- collect data of the run on client and server. Add log function [DONE]
+- write headers and body of query repetitions in distinct files? [DONE]
+- add collection of what is sent to server. Currently only received data is collected [DONE]
+- rename output_file to output_dir and move it to the root of the config file (same value for all tests) [DONE]
