@@ -992,21 +992,10 @@ void clean_output(config_setting_t *test, payload_specs *headers_specs,payload_s
 	}
 }
 
-#define add_mapping(tab,code,type) tab[(code)] = (mapping) {#code, code, type} 
-int main(int argc, char *argv[])
-{
+
+void run_curl_test(config_setting_t *test, config_setting_t *output_dir) {
   CURL *curl;
   CURLcode res;
-  // config root
-  config_t cfg;
-  // tests list entry
-  config_setting_t *tests, *output_dir;
-  // number of tests and index in loop
-  int tests_count, i;
-  //test entry and test name string
-  config_setting_t *test, *name_setting;
-  // string value of name_setting
-  const char * name_str;
 
   // queries of a test entry, and the setting entry giving the number of time it should be issued
   config_setting_t *queries, *repeat_setting;
@@ -1024,46 +1013,10 @@ int main(int argc, char *argv[])
   // headers to be set on query
   struct curl_slist * curl_headers;
 
-  // path to config file
-  char *tests_file;
-  // was config reas successfully?
-  int config_read;
   
   // char array used to get message from validation and header checks functions.
   //char message[VALIDATION_MESSAGE_LENGTH];
   char *message = malloc(VALIDATION_MESSAGE_LENGTH);
-
-  if (argc<2){
-	  tests_file="one_test.cfg";
-  } else {
-	  tests_file=argv[1];
-  }
-
-  printf("test file = %s\n", tests_file);
-  char* run_id;
-  get_run_id(&run_id);
-  printf("Run id is " KMAG "%s\n" KNON, run_id);
-
- 
-  // read config
-  config_read = read_config(tests_file, &cfg);
-  if(config_read==0) {
-    //extract tests
-    output_dir = config_lookup(&cfg, "output_dir");
-    tests = config_lookup(&cfg, "tests");
-    if(tests != NULL) {
-      tests_count = config_setting_length(tests);
-       
-      printf("found %d tests\n", tests_count);
-    }
-    // iterate on tests
-    for (i=0; i<tests_count; i++){
-	    test = config_setting_get_elem(tests, i);
-	    name_setting = config_setting_get_member(test, "name");
-	    if (name_setting!=NULL){
-		    name_str = config_setting_get_string(name_setting);
-		    printf(KYEL "%s running...\n" KNON, name_str);
-	    }
 	    // extract queries
 	    queries = config_setting_get_member(test, "queries");
 	    queries_count = config_setting_length(queries);
@@ -1207,9 +1160,85 @@ int main(int argc, char *argv[])
 			    free(previous);
 		    }
 	    }
-    }
+
     // free the message collector
     free(message);
+}
+
+#define add_mapping(tab,code,type) tab[(code)] = (mapping) {#code, code, type} 
+int main(int argc, char *argv[])
+{
+  // config root
+  config_t cfg;
+  // path to config file
+  char *tests_file;
+  // was config reas successfully?
+  int config_read;
+  // tests list entry
+  config_setting_t *tests;
+  // number of tests and index in loop
+  int tests_count, i;
+  //test entry and test name string
+  config_setting_t *test, *name_setting, *type_setting, *output_dir;
+  // string value of name_setting
+  const char * name_str, *type_str;
+
+  if (argc<2){
+	  tests_file="one_test.cfg";
+  } else {
+	  tests_file=argv[1];
+  }
+
+  printf("test file = %s\n", tests_file);
+  char* run_id;
+  get_run_id(&run_id);
+  printf("Run id is " KMAG "%s\n" KNON, run_id);
+
+ 
+  // read config
+  config_read = read_config(tests_file, &cfg);
+  if(config_read==0) {
+    //extract tests
+    output_dir = config_lookup(&cfg, "output_dir");
+    tests = config_lookup(&cfg, "tests");
+    if(tests != NULL) {
+      tests_count = config_setting_length(tests);
+       
+      printf("found %d tests\n", tests_count);
+    }
+    // iterate on tests
+    for (i=0; i<tests_count; i++){
+	    test = config_setting_get_elem(tests, i);
+	    type_setting = config_setting_get_member(test, "type");
+
+
+	    name_setting = config_setting_get_member(test, "name");
+	    if (name_setting!=NULL){
+		    name_str = config_setting_get_string(name_setting);
+		    printf(KYEL "%s running...\n" KNON, name_str);
+	    }
+	    else
+	    {
+		    printf(KRED "no name provided for test, aborting..." KNON);
+		    exit(2);
+	    }
+
+
+
+	    if (type_setting==NULL){
+		    printf(KRED "Not type specified for test \"%s\"\n" KNON, name_str);
+		    exit(3);
+	    }
+
+	    type_str = config_setting_get_string(type_setting);
+	    if (!strcmp(type_str,"curl")) {
+		    run_curl_test(test, output_dir);
+	    }
+	    else {
+		    printf(KRED "Unknown test type \"%s\"\n" KNON, type_str);
+	    }
+
+    }
  
   }
   else {
