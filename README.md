@@ -13,6 +13,59 @@ We want to
 - check the behaviour of middleboxes that do not terminate the TCP connections
 - run each test with and without mptcp checksum enabled
 
+## Installation and running
+
+The code depends on libconfig (http://www.hyperrealm.com/libconfig/), libsodium (http://doc.libsodium.org/),
+libuuid.
+
+To install packages on Debian/Ubuntu: 
+apt-get install libconfig-dev uuid-dev
+
+Install libsodium from source. We recommend you use GNU stow to manage locally installed libraries
+apt-get install stow
+
+Download libsodium from https://download.libsodium.org/libsodium/releases/, decompress it and go in the source
+directory, then:
+
+./configure --prefix=/usr/local/stow/libsodium-1.0.2
+make
+make install
+cd /usr/local/stow
+sudo stow libsodium-1.0.2
+
+Compile client and server:
+make client
+make server
+
+Run server with ./server. The client command requires one argument, the tests definition file. Examples
+are in tests/. To run the suite of tests currently defined, execute:
+./client tests/suite.cfg
+
+Each run gets a id assigned, which is a truncated uuid of length defined by RUN_ID_SIZE in utils/mbd_utils.h.
+Currently both client and servers log all transfer, in and out, to /tmp and /tmp/server repesctively.
+
+Client log files have prefix indicating which type of data it contains:
+- -curl : all curl logs, queries and response
+- -H : received headers
+- -D : received body
+
+Similarly for the server:
+- -R-H : response headers
+- -R-D : response body
+- -H   : query headers
+- -D   : query body
+
+Currently, tests are http requests. The client sends additional information to the server, and the server does the
+same in the reverse direction.
+A specific header contains the hash of the body, and another header contains the hash of all other headers. That
+way both ends can check if the request was modified in transit. The server also indicates to the client if it received
+headers unmodified in header X-H-HDRRCVOK.
+
+The client can perform some validation on the response, like http status, response size, etc. New validation should be easy to add.
+
+The server uses mongoose (http://cesanta.com/docs/Embed.shtml), which was modified to send headers described above and log all transfers.
+
+
 ## Tests 
 
 Here are tests that we would run. See below for details.
