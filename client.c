@@ -11,6 +11,23 @@
 // libsodium for hash computation
 #include <sodium.h>
 
+
+// for c-ares
+// requires libc-ares-dev
+#include <ares.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <stdarg.h>
+#include <string.h>
+#include <ctype.h>
+#include <unistd.h>
+// end cares
+
+
 // union type capable of holding each type of value found in validations
 typedef union validation_value_t {
 		int ival;
@@ -1165,6 +1182,226 @@ void run_curl_test(config_setting_t *test, config_setting_t *output_dir) {
     free(message);
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+//                        C-ares test
+////////////////////////////////////////////////////////////////////////////////
+
+
+//ARES_OPT_FLAGS
+//
+typedef struct slist_item {
+	char *value;
+	struct slist_item *next;
+} slist_item;
+
+typedef struct slist{
+	slist_item *head;
+	slist_item *last;
+	int size;
+} slist;
+
+void slist_init(slist **list) {
+	*list = (slist *) malloc(sizeof(slist));
+	(*list)->head = NULL;
+	(*list)->last = (*list)->head;
+	(*list)->size = 0;
+}
+void slist_append(slist *list, char* value) {
+	if (list->size==0) {
+		list->head = (slist_item*) malloc(sizeof(slist_item));
+		list->last = list->head;
+		list->size++;
+	}
+	else {
+		list->last->next = (slist_item*) malloc(sizeof(slist_item));
+		list->last = list->last->next;
+		list->size++;
+	}
+	list->last->value = (char *) malloc(INET6_ADDRSTRLEN);
+	list->last->next = NULL;
+	strncpy(list->last->value, value,  INET6_ADDRSTRLEN);
+
+}
+
+
+void slist_free(slist *list) {
+	slist_item *head = list->head, *previous=NULL;
+	while (head!=NULL){
+		free(head->value);
+		previous=head;
+		head = head->next;
+		free(previous);
+	}
+}
+
+void slist_iter(slist *list, void (*f)(char* item)){
+	slist_item *head = list->head;
+	while (head!=NULL){
+		f(head->value);
+		head = head->next;
+	}
+}
+
+int slist_all(slist *list, int (*f)(char* item)){
+	slist_item *head = list->head;
+	while (head!=NULL){
+		if (f(head->value)) {
+			head = head->next;
+		}
+		else {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+int slist_any(slist *list, int (*f)(char* item)){
+	slist_item *head = list->head;
+	while (head!=NULL){
+		if (f(head->value)) {
+			return 1;
+		}
+		else {
+			head = head->next;
+		}
+	}
+	return 0;
+}
+
+int slist_any_str(slist *list, char *needle){
+	slist_item *head = list->head;
+	while (head!=NULL){
+		if (!strcmp(needle, head->value)) {
+			return 1;
+		}
+		else {
+			head = head->next;
+		}
+	}
+	return 0;
+}
+
+void slist_print_item(char* item) {
+	printf("list item: %s\n", item);
+
+}
+
+typedef struct dns_queries_info_t {
+	int status;
+	int timeouts;
+	struct slist * list;
+} dns_queries_info_t;
+
+typedef struct dns_validations_mapping{
+	char *name;
+	int  code;
+	int (*f)(queries_info_t *head, struct validations_mapping m, config_setting_t * entry,  char **message);
+} dns_validations_mapping;
+
+
+static void
+wait_ares(ares_channel channel)
+{
+	for(;;){
+		struct timeval *tvp, tv;
+		fd_set read_fds, write_fds;
+		int nfds;
+
+		FD_ZERO(&read_fds);
+		FD_ZERO(&write_fds);
+		nfds = ares_fds(channel, &read_fds, &write_fds);
+		if(nfds == 0){
+			break;
+		}
+		tvp = ares_timeout(channel, NULL, &tv);
+		select(nfds, &read_fds, &write_fds, NULL, tvp);
+		ares_process(channel, &read_fds, &write_fds);
+	}
+}
+
+static void
+callback(void *arg, int status, int timeouts, struct hostent *host)
+{
+	dns_queries_info_t *query_info = (dns_queries_info_t *) arg;
+
+	if(!host || status != ARES_SUCCESS){
+		printf("Failed to lookup %s\n", ares_strerror(status));
+		return;
+	}
+
+	printf("Found address name %s\n", host->h_name);
+	char ip[INET6_ADDRSTRLEN];
+	int i = 0;
+	query_info->status = status;
+	query_info->timeouts = timeouts;
+	query_info->list = NULL;
+	slist *ips;
+	slist_init(&ips);
+
+	for (i = 0; host->h_addr_list[i]!=NULL; ++i) {
+		inet_ntop(host->h_addrtype, host->h_addr_list[i], ip, sizeof(ip));
+		slist_append(ips, ip);
+	}
+	query_info->list = ips;
+
+}
+
+void run_cares_test(config_setting_t *test, config_setting_t *output_dir) {
+
+	ares_channel channel;
+	int status;
+	struct ares_options options;
+	int optmask = 0;
+	dns_queries_info_t query_info;
+
+	status = ares_library_init(ARES_LIB_INIT_ALL);
+	if (status != ARES_SUCCESS){
+		printf("ares_library_init: %s\n", ares_strerror(status));
+		return;
+	}
+	// USEVC to use TCP (Virtual Circuit)
+	options.flags = ARES_FLAG_USEVC;
+//	optmask |= ARES_OPT_SOCK_STATE_CB;
+	optmask |= ARES_OPT_FLAGS;
+
+	status = ares_init_options(&channel, &options, optmask);
+	if(status != ARES_SUCCESS) {
+		printf(KRED "problem ares_init_options: %s\n" KNON, ares_strerror(status));
+		return;
+	}
+
+	ares_gethostbyname(channel, "google.com", AF_INET, callback, &query_info);
+	//ares_gethostbyname(channel, "google.com", AF_INET6, callback, NULL);
+	printf(KRED "BEFORE wait\n" KNON);
+	wait_ares(channel);
+	printf(KRED "AFTER wait\n" KNON);
+	slist_iter(query_info.list, slist_print_item);
+	char ip[INET6_ADDRSTRLEN] = "194.78.99.162";
+        if (slist_any_str(query_info.list,ip)) {
+		printf(KGRN "found %s\n" KNON, ip);
+	}
+	else {
+		printf(KRED "not found %s\n" KNON, ip);
+	}
+	strncpy(ip,"194.78.0.162", INET6_ADDRSTRLEN);
+        if (slist_any_str(query_info.list,ip)) {
+		printf(KGRN "found %s\n" KNON, ip);
+	}
+	else {
+		printf(KRED "not found %s\n" KNON, ip);
+	}
+
+
+	slist_free(query_info.list);
+	ares_destroy(channel);
+	ares_library_cleanup();
+
+
+}
+
+
+/////////////////////// end C-ares test ////////////////////////////////////////
 #define add_mapping(tab,code,type) tab[(code)] = (mapping) {#code, code, type} 
 int main(int argc, char *argv[])
 {
@@ -1234,6 +1471,9 @@ int main(int argc, char *argv[])
 	    if (!strcmp(type_str,"curl")) {
 		    run_curl_test(test, output_dir);
 	    }
+	    else if (!strcmp(type_str,"dns")) {
+		    run_cares_test(test,output_dir);
+	    }
 	    else {
 		    printf(KRED "Unknown test type \"%s\"\n" KNON, type_str);
 	    }
@@ -1242,7 +1482,7 @@ int main(int argc, char *argv[])
  
   }
   else {
-	  printf("no curl or no config\n");
+	  printf("test config error\n");
   }
   return 0;
 }
