@@ -1188,6 +1188,7 @@ void run_curl_test(config_setting_t *test, config_setting_t *output_dir) {
 ////////////////////////////////////////////////////////////////////////////////
 
 
+
 //ARES_OPT_FLAGS
 //
 typedef struct slist_item {
@@ -1235,7 +1236,7 @@ void slist_free(slist *list) {
 	}
 }
 
-void slist_iter(slist *list, void (*f)(char* item)){
+void slist_iter(slist *list, void (*f)(const char* item)){
 	slist_item *head = list->head;
 	while (head!=NULL){
 		f(head->value);
@@ -1269,7 +1270,7 @@ int slist_any(slist *list, int (*f)(char* item)){
 	return 0;
 }
 
-int slist_any_str(slist *list, char *needle){
+int slist_any_str(slist *list, const char *needle){
 	slist_item *head = list->head;
 	while (head!=NULL){
 		if (!strcmp(needle, head->value)) {
@@ -1282,7 +1283,7 @@ int slist_any_str(slist *list, char *needle){
 	return 0;
 }
 
-void slist_print_item(char* item) {
+void slist_print_item(const char* item) {
 	printf("list item: %s\n", item);
 
 }
@@ -1296,8 +1297,102 @@ typedef struct dns_queries_info_t {
 typedef struct dns_validations_mapping{
 	char *name;
 	int  code;
-	int (*f)(queries_info_t *head, struct validations_mapping m, config_setting_t * entry,  char **message);
+	int (*f)(dns_queries_info_t *head, struct dns_validations_mapping m, config_setting_t * entry,  char **message);
 } dns_validations_mapping;
+
+int dns_include(dns_queries_info_t *info, struct dns_validations_mapping m, config_setting_t * entry,  char **message);
+dns_validations_mapping dns_validations_mappings[]={
+	{"dns_include", NONE, dns_include}
+};
+
+int dns_include(dns_queries_info_t *info, struct dns_validations_mapping m, config_setting_t * entry,  char **message){
+	char iteration_message[VALIDATION_MESSAGE_LENGTH];
+	config_setting_t *value_entry = config_setting_get_member(entry, "value");
+	if (value_entry == NULL) {
+		printf("value entry not found in validation\n");
+		return -1;
+	}
+	const char *value_str=NULL;
+	int queries_count, i;
+
+	switch(value_entry->type)
+	{ 
+		case CONFIG_TYPE_STRING:
+			value_str = config_setting_get_string(value_entry);
+			if (slist_any_str(info->list, value_str)) {
+				append_to_buffer(message, "Success");
+				return 1;
+			}
+			else {
+				return 0;
+			}
+		case CONFIG_TYPE_LIST:
+			queries_count = config_setting_length(value_entry);
+			for (i=0; i<queries_count; i++){
+				value_str = config_setting_get_string_elem(value_entry, i);
+				if (!slist_any_str(info->list, value_str)) {
+					append_to_buffer(message, "Not found\n");
+					return 0;
+				}
+			}
+			append_to_buffer(message, "success\n");
+			return 1;
+	}
+}
+
+int dns_validations_mappings_len = sizeof(dns_validations_mappings)/sizeof(dns_validations_mappings[0]);
+
+// find a mapping options as string -> option symbol
+int find_dns_validation_mapping(const char* validation, dns_validations_mapping *m) {
+	int i=0;
+	while (i<dns_validations_mappings_len && strcmp(dns_validations_mappings[i].name, validation)) {
+		i++;
+	}
+	if (i<dns_validations_mappings_len) {
+		*m = dns_validations_mappings[i];
+		return 0;
+	}
+	else {
+		printf("Validation %s not handled by this code\n", validation);
+		return -1;
+	}
+
+}
+
+
+int perform_dns_validation(dns_queries_info_t *queries_info,config_setting_t* entry, char **message) {
+	// value to return
+	int res;
+	
+	// actual value we got in this run
+	validation_value_t actual;
+
+	// value entry from the config file. 
+	// value_entry->value contains the union typed value we need to compare to expected value
+	config_setting_t *value_entry = config_setting_get_member(entry, "value");
+
+	// name entry from the config file, and its string value.
+	// Its value is the name of the option passed to curl_easy_getinfo, which we get from the mappings
+	config_setting_t *name_entry = config_setting_get_member(entry, "name");
+	const char * name_str=config_setting_get_string(name_entry);
+	// mapping of the option name to its value
+	dns_validations_mapping m;
+	int mapping_found = find_dns_validation_mapping(name_str,&m);
+	if (mapping_found) {
+		printf("ERROR, no validation mapping found for %s!\n", name_str);
+		exit(1);
+	}
+
+	res = m.f(queries_info, m, entry, message);
+	return res;
+}
+
+
+
+
+
+
+
 
 
 static void
@@ -1353,51 +1448,86 @@ void run_cares_test(config_setting_t *test, config_setting_t *output_dir) {
 	int status;
 	struct ares_options options;
 	int optmask = 0;
-	dns_queries_info_t query_info;
 
 	status = ares_library_init(ARES_LIB_INIT_ALL);
 	if (status != ARES_SUCCESS){
 		printf("ares_library_init: %s\n", ares_strerror(status));
 		return;
 	}
-	// USEVC to use TCP (Virtual Circuit)
-	options.flags = ARES_FLAG_USEVC;
-//	optmask |= ARES_OPT_SOCK_STATE_CB;
-	optmask |= ARES_OPT_FLAGS;
+	config_setting_t *queries = config_setting_get_member(test, "queries");
+	int queries_count = config_setting_length(queries);
+	int k;
+	char *message = malloc(VALIDATION_MESSAGE_LENGTH);
+	// iterate on queries
+	for(k=0;k<queries_count;k++){
+		    // get query of this iteration
+		    config_setting_t *query = config_setting_get_elem(queries, k);
 
-	status = ares_init_options(&channel, &options, optmask);
-	if(status != ARES_SUCCESS) {
-		printf(KRED "problem ares_init_options: %s\n" KNON, ares_strerror(status));
-		return;
-	}
+		    // determine repetitions
+		    config_setting_t *repeat_setting = config_setting_get_member(query, "repeat");
+		    int repeat_query;
+		    if (repeat_setting!=NULL) {
+			    repeat_query = config_setting_get_int(repeat_setting);
+		    }
+		    else {
+			    repeat_query = 1;
+		    }
+		    dns_queries_info_t query_info;
+		    // USEVC to use TCP (Virtual Circuit)
+		    options.flags = ARES_FLAG_USEVC;
+		    //	optmask |= ARES_OPT_SOCK_STATE_CB;
+		    optmask |= ARES_OPT_FLAGS;
 
-	ares_gethostbyname(channel, "google.com", AF_INET, callback, &query_info);
-	//ares_gethostbyname(channel, "google.com", AF_INET6, callback, NULL);
-	printf(KRED "BEFORE wait\n" KNON);
-	wait_ares(channel);
-	printf(KRED "AFTER wait\n" KNON);
-	slist_iter(query_info.list, slist_print_item);
-	char ip[INET6_ADDRSTRLEN] = "194.78.99.162";
-        if (slist_any_str(query_info.list,ip)) {
-		printf(KGRN "found %s\n" KNON, ip);
-	}
-	else {
-		printf(KRED "not found %s\n" KNON, ip);
-	}
-	strncpy(ip,"194.78.0.162", INET6_ADDRSTRLEN);
-        if (slist_any_str(query_info.list,ip)) {
-		printf(KGRN "found %s\n" KNON, ip);
-	}
-	else {
-		printf(KRED "not found %s\n" KNON, ip);
-	}
+		    status = ares_init_options(&channel, &options, optmask);
+		    if(status != ARES_SUCCESS) {
+			    printf(KRED "problem ares_init_options: %s\n" KNON, ares_strerror(status));
+			    return;
+		    }
 
+		    int l;
+		    for(l=0; l<repeat_query; l++) {
+			    ares_gethostbyname(channel, "google.com", AF_INET, callback, &query_info);
+			    //ares_gethostbyname(channel, "google.com", AF_INET6, callback, NULL);
+			    printf(KRED "BEFORE wait\n" KNON);
+			    wait_ares(channel);
+			    printf(KRED "AFTER wait\n" KNON);
+			    slist_iter(query_info.list, slist_print_item);
+			    char ip[INET6_ADDRSTRLEN] = "194.78.99.162";
+			    if (slist_any_str(query_info.list,ip)) {
+				    printf(KGRN "found %s\n" KNON, ip);
+			    }
+			    else {
+				    printf(KRED "not found %s\n" KNON, ip);
+			    }
+			    strncpy(ip,"194.78.0.162", INET6_ADDRSTRLEN);
+			    if (slist_any_str(query_info.list,ip)) {
+				    printf(KGRN "found %s\n" KNON, ip);
+			    }
+			    else {
+				    printf(KRED "not found %s\n" KNON, ip);
+			    }
 
-	slist_free(query_info.list);
-	ares_destroy(channel);
+		    }
+
+		    config_setting_t *validations = config_setting_get_member(query, "validations");
+		    if (validations != NULL) {
+			    //printf("Performing validations\n");
+			    int validations_count = config_setting_length(validations);
+			    // iterate over validation of this query
+			    int m;
+			    for(m=0;m<validations_count;m++){
+				    config_setting_t *validation = config_setting_get_elem(validations, m);
+				    // wipe message from previous validation
+				    memset(message,0,sizeof(message));
+				    perform_dns_validation(&query_info, validation, &message);
+				    printf("%s",message);
+
+			    }
+		    }
+		    slist_free(query_info.list);
+		    ares_destroy(channel);
+	}
 	ares_library_cleanup();
-
-
 }
 
 

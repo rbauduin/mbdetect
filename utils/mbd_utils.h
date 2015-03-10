@@ -113,6 +113,7 @@ typedef struct validations_mapping{
 	int (*f)(queries_info_t *head, struct validations_mapping m, config_setting_t * entry,  char **message);
 } validations_mapping;
 
+
 int is_control_header(const char* contents);
 void sha_from_state(crypto_hash_sha256_state *state, char(* sha)[crypto_hash_sha256_BYTES*2+1]);
 void string_sha(char* string, char(* sha)[crypto_hash_sha256_BYTES*2+1]); 
