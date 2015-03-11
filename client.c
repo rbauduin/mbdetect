@@ -197,6 +197,8 @@ mapping mappings[] =  {
 	,{"CURLINFO_RESPONSE_CODE",CURLINFO_RESPONSE_CODE ,"int"}
 	,{"CURLINFO_EFFECTIVE_URL",CURLINFO_EFFECTIVE_URL ,"string"}
 	,{"CURLOPT_CUSTOMREQUEST", CURLOPT_CUSTOMREQUEST, "string"}
+	,{"ARES_SUCCESS", ARES_SUCCESS, "int"}
+	,{"ARES_ENOTFOUND", ARES_ENOTFOUND, "int"}
 	
 }; 
 
@@ -867,8 +869,8 @@ void get_run_log_dir(config_setting_t *output_dir, char **run_path){
 // suffix is the suffix to add to the filename. Use to add "-H" and "-D"
 build_log_file_path(const char *log_dir, const char *test_id, int repeat, const char *suffix, char **path) {
 	// allocate and clean memory (needed!)
-	*path = (char *) malloc(1024);
-	memset(*path, 0, 1024);
+	*path = (char *) malloc(MAX_LOG_PATH_SIZE);
+	memset(*path, 0, MAX_LOG_PATH_SIZE);
 	// copu log_dir value to destination string and append "/"
 	append_to_buffer(path, log_dir);
 	append_to_buffer(path, "/");
@@ -1056,7 +1058,7 @@ void run_curl_test(config_setting_t *test, config_setting_t *output_dir) {
 		    queries_info_t *queries_info=NULL;
 		    queries_info_t *current_query_info=queries_info;
 
-		    current_query_info=queries_info;
+		    //current_query_info=queries_info;
 		    
 		    // initialise curl
 		    // Do it outside the repetition loop to reuse
@@ -1292,6 +1294,9 @@ typedef struct dns_queries_info_t {
 	int status;
 	int timeouts;
 	struct slist * list;
+	char log_path[MAX_LOG_PATH_SIZE];
+	FILE *fd;
+	struct dns_queries_info_t *next;
 } dns_queries_info_t;
 
 typedef struct dns_validations_mapping{
@@ -1301,10 +1306,34 @@ typedef struct dns_validations_mapping{
 } dns_validations_mapping;
 
 int dns_include(dns_queries_info_t *info, struct dns_validations_mapping m, config_setting_t * entry,  char **message);
+int dns_result_code(dns_queries_info_t *info, struct dns_validations_mapping m, config_setting_t * entry,  char **message);
 dns_validations_mapping dns_validations_mappings[]={
 	{"dns_include", NONE, dns_include}
+	,{"dns_result_code", NONE, dns_result_code}
 };
 
+int dns_result_code(dns_queries_info_t *info, struct dns_validations_mapping m, config_setting_t * entry,  char **message){
+	char iteration_message[VALIDATION_MESSAGE_LENGTH];
+	config_setting_t *value_entry = config_setting_get_member(entry, "value");
+	if (value_entry == NULL) {
+		printf("value entry not found in validation\n");
+		return -1;
+	}
+	const char *value_str = config_setting_get_string(value_entry);
+	mapping code_mapping;
+	find_mapping(value_str, &code_mapping);
+	while (info!=NULL){
+		if (info->status == code_mapping.code) {
+			sprintf(iteration_message, KGRN "Success expected return code %d\n" KNON, info->status);
+			append_to_buffer(message, iteration_message);
+		}
+		else {
+			sprintf(iteration_message, KRED "Failure, unexpected return code %d\n" KNON, info->status);
+			append_to_buffer(message, iteration_message);
+		}
+		info = info->next;
+	}
+}
 int dns_include(dns_queries_info_t *info, struct dns_validations_mapping m, config_setting_t * entry,  char **message){
 	char iteration_message[VALIDATION_MESSAGE_LENGTH];
 	config_setting_t *value_entry = config_setting_get_member(entry, "value");
@@ -1315,28 +1344,38 @@ int dns_include(dns_queries_info_t *info, struct dns_validations_mapping m, conf
 	const char *value_str=NULL;
 	int queries_count, i;
 
-	switch(value_entry->type)
-	{ 
-		case CONFIG_TYPE_STRING:
-			value_str = config_setting_get_string(value_entry);
-			if (slist_any_str(info->list, value_str)) {
-				append_to_buffer(message, "Success");
-				return 1;
-			}
-			else {
-				return 0;
-			}
-		case CONFIG_TYPE_LIST:
-			queries_count = config_setting_length(value_entry);
-			for (i=0; i<queries_count; i++){
-				value_str = config_setting_get_string_elem(value_entry, i);
-				if (!slist_any_str(info->list, value_str)) {
-					append_to_buffer(message, "Not found\n");
+	while (info!=NULL){
+		switch(value_entry->type)
+		{ 
+			case CONFIG_TYPE_STRING:
+				value_str = config_setting_get_string(value_entry);
+				if (slist_any_str(info->list, value_str)) {
+					sprintf(iteration_message, KGRN "Success, found ip %s\n" KNON, value_str);
+					append_to_buffer(message, iteration_message);
+					return 1;
+				}
+				else {
+					sprintf(iteration_message, KRED "Failure, did not find ip %s\n" KNON, value_str);
+					append_to_buffer(message, iteration_message);
 					return 0;
 				}
-			}
-			append_to_buffer(message, "success\n");
-			return 1;
+			case CONFIG_TYPE_LIST:
+				queries_count = config_setting_length(value_entry);
+				for (i=0; i<queries_count; i++){
+					value_str = config_setting_get_string_elem(value_entry, i);
+					if (!slist_any_str(info->list, value_str)) {
+						sprintf(iteration_message, KRED "Failure, did not find ip %s\n" KNON, value_str);
+						append_to_buffer(message, iteration_message);
+						return 0;
+					}
+					else {
+						sprintf(iteration_message, KGRN "Success, found ip %s\n" KNON, value_str);
+						append_to_buffer(message, iteration_message);
+					}
+				}
+				return 1;
+		}
+		info = info->next;
 	}
 }
 
@@ -1419,26 +1458,40 @@ static void
 callback(void *arg, int status, int timeouts, struct hostent *host)
 {
 	dns_queries_info_t *query_info = (dns_queries_info_t *) arg;
+	query_info->status = status;
+	query_info->timeouts = timeouts;
 
 	if(!host || status != ARES_SUCCESS){
 		printf("Failed to lookup %s\n", ares_strerror(status));
 		return;
 	}
 
-	printf("Found address name %s\n", host->h_name);
+	fprintf( query_info->fd, "Resolved name %s\n", host->h_name);
 	char ip[INET6_ADDRSTRLEN];
 	int i = 0;
-	query_info->status = status;
-	query_info->timeouts = timeouts;
-	query_info->list = NULL;
-	slist *ips;
-	slist_init(&ips);
+	slist *ips = query_info->list;
 
 	for (i = 0; host->h_addr_list[i]!=NULL; ++i) {
 		inet_ntop(host->h_addrtype, host->h_addr_list[i], ip, sizeof(ip));
+		fprintf(query_info->fd, "Resolved to: %s\n", ip);
 		slist_append(ips, ip);
 	}
 	query_info->list = ips;
+
+}
+
+void set_dns_output(dns_queries_info_t *query_info, config_setting_t *output_dir, config_setting_t *test, int repeat) {
+	const char *test_id = get_test_id(test);
+	char *log_path;
+
+	char *base_path;
+	get_run_log_dir(output_dir, &base_path);
+	//this is the run log path 
+	mkpath(base_path);
+
+	build_log_file_path(base_path, test_id, repeat, ".dns", &log_path);
+	strncpy(query_info->log_path, log_path, MAX_LOG_PATH_SIZE);
+	query_info->fd = fopen(log_path, "a");
 
 }
 
@@ -1472,7 +1525,13 @@ void run_cares_test(config_setting_t *test, config_setting_t *output_dir) {
 		    else {
 			    repeat_query = 1;
 		    }
-		    dns_queries_info_t query_info;
+
+		    config_setting_t *host_setting = config_setting_get_member(query, "host");
+		    const char *host = config_setting_get_string(host_setting);
+
+		    dns_queries_info_t *queries_info=NULL;
+		    dns_queries_info_t *current_query_info=queries_info;
+
 		    // USEVC to use TCP (Virtual Circuit)
 		    options.flags = ARES_FLAG_USEVC;
 		    //	optmask |= ARES_OPT_SOCK_STATE_CB;
@@ -1485,27 +1544,29 @@ void run_cares_test(config_setting_t *test, config_setting_t *output_dir) {
 		    }
 
 		    int l;
+
+		    
 		    for(l=0; l<repeat_query; l++) {
-			    ares_gethostbyname(channel, "google.com", AF_INET, callback, &query_info);
+			    if (queries_info==NULL) {
+				    current_query_info = (dns_queries_info_t *)malloc(sizeof(dns_queries_info_t));
+				    queries_info = current_query_info;
+			    }
+			    else {
+				    current_query_info->next= (dns_queries_info_t *)malloc(sizeof(dns_queries_info_t));
+				    current_query_info=current_query_info->next;
+			    }
+			    slist *ips;
+			    slist_init(&ips);
+			    current_query_info->list = ips;
+			    current_query_info->status = -1;
+			    current_query_info->fd = NULL;
+			    current_query_info->next = NULL;
+
+			    set_dns_output(current_query_info, output_dir, test, l);
+			    ares_gethostbyname(channel, host, AF_INET, callback, current_query_info);
 			    //ares_gethostbyname(channel, "google.com", AF_INET6, callback, NULL);
-			    printf(KRED "BEFORE wait\n" KNON);
 			    wait_ares(channel);
-			    printf(KRED "AFTER wait\n" KNON);
-			    slist_iter(query_info.list, slist_print_item);
-			    char ip[INET6_ADDRSTRLEN] = "194.78.99.162";
-			    if (slist_any_str(query_info.list,ip)) {
-				    printf(KGRN "found %s\n" KNON, ip);
-			    }
-			    else {
-				    printf(KRED "not found %s\n" KNON, ip);
-			    }
-			    strncpy(ip,"194.78.0.162", INET6_ADDRSTRLEN);
-			    if (slist_any_str(query_info.list,ip)) {
-				    printf(KGRN "found %s\n" KNON, ip);
-			    }
-			    else {
-				    printf(KRED "not found %s\n" KNON, ip);
-			    }
+			    //slist_iter(query_info.list, slist_print_item);
 
 		    }
 
@@ -1519,12 +1580,13 @@ void run_cares_test(config_setting_t *test, config_setting_t *output_dir) {
 				    config_setting_t *validation = config_setting_get_elem(validations, m);
 				    // wipe message from previous validation
 				    memset(message,0,sizeof(message));
-				    perform_dns_validation(&query_info, validation, &message);
+				    perform_dns_validation(queries_info, validation, &message);
 				    printf("%s",message);
 
 			    }
 		    }
-		    slist_free(query_info.list);
+		    // FIXME: free this for each element in queries_info
+		    //slist_free(query_info->list);
 		    ares_destroy(channel);
 	}
 	ares_library_cleanup();
