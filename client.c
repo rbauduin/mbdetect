@@ -5,6 +5,7 @@
 #include <libconfig.h>
 #include "utils/mbd_utils.h"
 #include "utils/mbd_version.h"
+#include "utils/slist.h"
 #include <uuid/uuid.h>
 
 
@@ -1191,137 +1192,64 @@ void run_curl_test(config_setting_t *test, config_setting_t *output_dir) {
 
 
 
-//ARES_OPT_FLAGS
-//
-typedef struct slist_item {
-	char *value;
-	struct slist_item *next;
-} slist_item;
-
-typedef struct slist{
-	slist_item *head;
-	slist_item *last;
-	int size;
-} slist;
-
-void slist_init(slist **list) {
-	*list = (slist *) malloc(sizeof(slist));
-	(*list)->head = NULL;
-	(*list)->last = (*list)->head;
-	(*list)->size = 0;
-}
-void slist_append(slist *list, char* value) {
-	if (list->size==0) {
-		list->head = (slist_item*) malloc(sizeof(slist_item));
-		list->last = list->head;
-		list->size++;
-	}
-	else {
-		list->last->next = (slist_item*) malloc(sizeof(slist_item));
-		list->last = list->last->next;
-		list->size++;
-	}
-	list->last->value = (char *) malloc(INET6_ADDRSTRLEN);
-	list->last->next = NULL;
-	strncpy(list->last->value, value,  INET6_ADDRSTRLEN);
-
-}
-
-
-void slist_free(slist *list) {
-	slist_item *head = list->head, *previous=NULL;
-	while (head!=NULL){
-		free(head->value);
-		previous=head;
-		head = head->next;
-		free(previous);
-	}
-}
-
-void slist_iter(slist *list, void (*f)(const char* item)){
-	slist_item *head = list->head;
-	while (head!=NULL){
-		f(head->value);
-		head = head->next;
-	}
-}
-
-int slist_all(slist *list, int (*f)(char* item)){
-	slist_item *head = list->head;
-	while (head!=NULL){
-		if (f(head->value)) {
-			head = head->next;
-		}
-		else {
-			return 0;
-		}
-	}
-	return 1;
-}
-
-int slist_any(slist *list, int (*f)(char* item)){
-	slist_item *head = list->head;
-	while (head!=NULL){
-		if (f(head->value)) {
-			return 1;
-		}
-		else {
-			head = head->next;
-		}
-	}
-	return 0;
-}
-
-int slist_any_str(slist *list, const char *needle){
-	slist_item *head = list->head;
-	while (head!=NULL){
-		if (!strcmp(needle, head->value)) {
-			return 1;
-		}
-		else {
-			head = head->next;
-		}
-	}
-	return 0;
-}
-
-void slist_print_item(const char* item) {
-	printf("list item: %s\n", item);
-
-}
-
+// structure holding information about one dns query.
+// it has a link to the next query's information
 typedef struct dns_queries_info_t {
+	// c-ares status
 	int status;
+	// number of timeouts
 	int timeouts;
+	// domain name to resolve
+	char domain[MAX_DOMAIN_SIZE];
+	// list of ip addresses it resolves to
 	struct slist * list;
+	// file we write log to
 	char log_path[MAX_LOG_PATH_SIZE];
+	// file descriptor of log file
 	FILE *fd;
+	// link to next query_info
 	struct dns_queries_info_t *next;
 } dns_queries_info_t;
 
+// mapping of dns queries validations
+// - name of validation,
+// - possible code, legacy from curl tests, but might become useful later. Use NONE to not use it.
+// - validation function to call
 typedef struct dns_validations_mapping{
 	char *name;
 	int  code;
 	int (*f)(dns_queries_info_t *head, struct dns_validations_mapping m, config_setting_t * entry,  char **message);
 } dns_validations_mapping;
 
+
+// forward declarations
 int dns_include(dns_queries_info_t *info, struct dns_validations_mapping m, config_setting_t * entry,  char **message);
 int dns_result_code(dns_queries_info_t *info, struct dns_validations_mapping m, config_setting_t * entry,  char **message);
+
+
+// dns validations mapping
 dns_validations_mapping dns_validations_mappings[]={
 	{"dns_include", NONE, dns_include}
 	,{"dns_result_code", NONE, dns_result_code}
 };
 
+// check that the result code is what was expected
 int dns_result_code(dns_queries_info_t *info, struct dns_validations_mapping m, config_setting_t * entry,  char **message){
+	// message collector
 	char iteration_message[VALIDATION_MESSAGE_LENGTH];
+
+	// expected value
 	config_setting_t *value_entry = config_setting_get_member(entry, "value");
 	if (value_entry == NULL) {
 		printf("value entry not found in validation\n");
 		return -1;
 	}
 	const char *value_str = config_setting_get_string(value_entry);
+
+	// map expected value string to its constant value
 	mapping code_mapping;
 	find_mapping(value_str, &code_mapping);
+	// traverse all query_infos linked list to check each query resulted in the expected value
 	while (info!=NULL){
 		if (info->status == code_mapping.code) {
 			sprintf(iteration_message, KGRN "Success expected return code %d\n" KNON, info->status);
@@ -1334,8 +1262,12 @@ int dns_result_code(dns_queries_info_t *info, struct dns_validations_mapping m, 
 		info = info->next;
 	}
 }
+
+// Check that the domain resolution contains one or multiple ips,
+// hence value in config file may be a string or a list of strings.
 int dns_include(dns_queries_info_t *info, struct dns_validations_mapping m, config_setting_t * entry,  char **message){
 	char iteration_message[VALIDATION_MESSAGE_LENGTH];
+	// value to look for
 	config_setting_t *value_entry = config_setting_get_member(entry, "value");
 	if (value_entry == NULL) {
 		printf("value entry not found in validation\n");
@@ -1344,9 +1276,11 @@ int dns_include(dns_queries_info_t *info, struct dns_validations_mapping m, conf
 	const char *value_str=NULL;
 	int queries_count, i;
 
+	// traverse whole query_info linked list
 	while (info!=NULL){
 		switch(value_entry->type)
 		{ 
+			// if string, use the value itself
 			case CONFIG_TYPE_STRING:
 				value_str = config_setting_get_string(value_entry);
 				if (slist_any_str(info->list, value_str)) {
@@ -1359,6 +1293,7 @@ int dns_include(dns_queries_info_t *info, struct dns_validations_mapping m, conf
 					append_to_buffer(message, iteration_message);
 					return 0;
 				}
+			// if list, check each list member
 			case CONFIG_TYPE_LIST:
 				queries_count = config_setting_length(value_entry);
 				for (i=0; i<queries_count; i++){
@@ -1375,6 +1310,7 @@ int dns_include(dns_queries_info_t *info, struct dns_validations_mapping m, conf
 				}
 				return 1;
 		}
+		// go to next query_info in linked list
 		info = info->next;
 	}
 }
@@ -1399,6 +1335,7 @@ int find_dns_validation_mapping(const char* validation, dns_validations_mapping 
 }
 
 
+// perform all validations after queries have been done
 int perform_dns_validation(dns_queries_info_t *queries_info,config_setting_t* entry, char **message) {
 	// value to return
 	int res;
@@ -1422,18 +1359,12 @@ int perform_dns_validation(dns_queries_info_t *queries_info,config_setting_t* en
 		exit(1);
 	}
 
+	// call the mapping's function
 	res = m.f(queries_info, m, entry, message);
 	return res;
 }
 
-
-
-
-
-
-
-
-
+// utility ares function, waiting for asynchronous code to terminate
 static void
 wait_ares(ares_channel channel)
 {
@@ -1454,47 +1385,71 @@ wait_ares(ares_channel channel)
 	}
 }
 
+// C-ares callback.
+// - arg is the user provided argument, we pass a dns_query_info_t structure
+//   holding the hostname and file descriptor to log to
 static void
 callback(void *arg, int status, int timeouts, struct hostent *host)
 {
 	dns_queries_info_t *query_info = (dns_queries_info_t *) arg;
+
+	// if host is NULL, resolution failed. We lookup name in query_info then
+	fprintf( query_info->fd, "Resolution of %s\n", query_info->domain);
+	if (host!=NULL) {
+		fprintf( query_info->fd, "Effective host: %s\n", host->h_name);
+	} 
+	fprintf( query_info->fd, "Status: %d\n", status);
+	fprintf( query_info->fd, "Timeouts: %d\n", timeouts);
+
+	// save info for validations
 	query_info->status = status;
 	query_info->timeouts = timeouts;
 
+	// stop here if resolution failed
 	if(!host || status != ARES_SUCCESS){
-		printf("Failed to lookup %s\n", ares_strerror(status));
+		fprintf(query_info->fd, "Failed to lookup: %s\n", ares_strerror(status));
 		return;
 	}
 
-	fprintf( query_info->fd, "Resolved name %s\n", host->h_name);
+	// if resolution successful, log addresses and collect them in query_info
+	fprintf(query_info->fd, "Domain resolved:\n");
+
 	char ip[INET6_ADDRSTRLEN];
 	int i = 0;
 	slist *ips = query_info->list;
 
 	for (i = 0; host->h_addr_list[i]!=NULL; ++i) {
 		inet_ntop(host->h_addrtype, host->h_addr_list[i], ip, sizeof(ip));
-		fprintf(query_info->fd, "Resolved to: %s\n", ip);
+		fprintf(query_info->fd, "%s\n", ip);
 		slist_append(ips, ip);
 	}
 	query_info->list = ips;
 
 }
 
+// builds the log path, and puts info in query_info
 void set_dns_output(dns_queries_info_t *query_info, config_setting_t *output_dir, config_setting_t *test, int repeat) {
-	const char *test_id = get_test_id(test);
 	char *log_path;
-
 	char *base_path;
+	const char *test_id = get_test_id(test);
+
+	// build the directory path
 	get_run_log_dir(output_dir, &base_path);
-	//this is the run log path 
+
+	//this is the run specific log dir, create it if needed 
 	mkpath(base_path);
 
-	build_log_file_path(base_path, test_id, repeat, ".dns", &log_path);
+	// All logs of dns tests go the the same file, even in case of repetitions
+	build_log_file_path(base_path, test_id, 0, ".dns", &log_path);
+
+	// put info in query_info
 	strncpy(query_info->log_path, log_path, MAX_LOG_PATH_SIZE);
 	query_info->fd = fopen(log_path, "a");
 
 }
 
+// run a dns test as defined in the config file.
+// Issues all queries and possible repetitions
 void run_cares_test(config_setting_t *test, config_setting_t *output_dir) {
 
 	ares_channel channel;
@@ -1502,15 +1457,21 @@ void run_cares_test(config_setting_t *test, config_setting_t *output_dir) {
 	struct ares_options options;
 	int optmask = 0;
 
+	// init c-ares
 	status = ares_library_init(ARES_LIB_INIT_ALL);
 	if (status != ARES_SUCCESS){
 		printf("ares_library_init: %s\n", ares_strerror(status));
 		return;
 	}
+
+	// get queries for this test
 	config_setting_t *queries = config_setting_get_member(test, "queries");
 	int queries_count = config_setting_length(queries);
+
+	// index variable and message collector
 	int k;
 	char *message = malloc(VALIDATION_MESSAGE_LENGTH);
+	
 	// iterate on queries
 	for(k=0;k<queries_count;k++){
 		    // get query of this iteration
@@ -1526,9 +1487,11 @@ void run_cares_test(config_setting_t *test, config_setting_t *output_dir) {
 			    repeat_query = 1;
 		    }
 
+		    // get hostname to resolve
 		    config_setting_t *host_setting = config_setting_get_member(query, "host");
 		    const char *host = config_setting_get_string(host_setting);
 
+		    // define the query_info linked list, initially empty
 		    dns_queries_info_t *queries_info=NULL;
 		    dns_queries_info_t *current_query_info=queries_info;
 
@@ -1537,39 +1500,52 @@ void run_cares_test(config_setting_t *test, config_setting_t *output_dir) {
 		    //	optmask |= ARES_OPT_SOCK_STATE_CB;
 		    optmask |= ARES_OPT_FLAGS;
 
+		    // set options
 		    status = ares_init_options(&channel, &options, optmask);
 		    if(status != ARES_SUCCESS) {
 			    printf(KRED "problem ares_init_options: %s\n" KNON, ares_strerror(status));
 			    return;
 		    }
 
+		    // repetition index variable
 		    int l;
 
 		    
+		    // issue repetitions
 		    for(l=0; l<repeat_query; l++) {
 			    if (queries_info==NULL) {
+				    // first query, initialise
 				    current_query_info = (dns_queries_info_t *)malloc(sizeof(dns_queries_info_t));
 				    queries_info = current_query_info;
 			    }
 			    else {
+				    // subsequent query, append
 				    current_query_info->next= (dns_queries_info_t *)malloc(sizeof(dns_queries_info_t));
 				    current_query_info=current_query_info->next;
 			    }
+
+			    // setup this query's query_info
 			    slist *ips;
 			    slist_init(&ips);
 			    current_query_info->list = ips;
 			    current_query_info->status = -1;
 			    current_query_info->fd = NULL;
 			    current_query_info->next = NULL;
+			    strncpy(current_query_info->domain, host, MAX_DOMAIN_SIZE);
 
+			    // setup logs
 			    set_dns_output(current_query_info, output_dir, test, l);
-			    ares_gethostbyname(channel, host, AF_INET, callback, current_query_info);
-			    //ares_gethostbyname(channel, "google.com", AF_INET6, callback, NULL);
-			    wait_ares(channel);
-			    //slist_iter(query_info.list, slist_print_item);
 
+			    // issue request
+			    ares_gethostbyname(channel, host, AF_INET, callback, current_query_info);
+			    // ipv6:
+			    //ares_gethostbyname(channel, "google.com", AF_INET6, callback, NULL);
+
+			    // wait for asynchronous code to terminate
+			    wait_ares(channel);
 		    }
 
+		    // perform validations
 		    config_setting_t *validations = config_setting_get_member(query, "validations");
 		    if (validations != NULL) {
 			    //printf("Performing validations\n");

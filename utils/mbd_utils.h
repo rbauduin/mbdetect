@@ -16,6 +16,8 @@
 #define MAX_HEADER_NAME_SIZE 512
 #define MAX_HEADER_VALUE_SIZE 512
 #define MAX_HEADER_SIZE 1024
+// maximum size of domain to be resolved in dns tests
+#define MAX_DOMAIN_SIZE 128
 #define NOT_FOUND_BODY "File not found. This is a test server only, with not content available." 
 // return values
 #define NO_MATCH 0
