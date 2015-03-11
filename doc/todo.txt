@@ -1,7 +1,8 @@
 - fix  *(end+4)='\0'; in mongoose.c on_recv_data
-- support non curl tests in config file
 - repeat tests with and without mptcp, with and without mptch checksum
 - error handling
+- curl tests: check how logs are collected when multiple queries in one test, with some of them repeated
+- extract curl and dns tests to their own files, and make them independent
 
 
 - add control of headers in server code sending 404 [DONE]
@@ -12,3 +13,4 @@
 - write headers and body of query repetitions in distinct files? [DONE]
 - add collection of what is sent to server. Currently only received data is collected [DONE]
 - rename output_file to output_dir and move it to the root of the config file (same value for all tests) [DONE]
+- support non curl tests in config file [DONE]
