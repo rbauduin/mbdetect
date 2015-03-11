@@ -200,6 +200,7 @@ mapping mappings[] =  {
 	,{"CURLOPT_CUSTOMREQUEST", CURLOPT_CUSTOMREQUEST, "string"}
 	,{"ARES_SUCCESS", ARES_SUCCESS, "int"}
 	,{"ARES_ENOTFOUND", ARES_ENOTFOUND, "int"}
+	,{"ARES_FLAG_USEVC", ARES_FLAG_USEVC, "int"}
 	
 }; 
 
@@ -1495,8 +1496,27 @@ void run_cares_test(config_setting_t *test, config_setting_t *output_dir) {
 		    dns_queries_info_t *queries_info=NULL;
 		    dns_queries_info_t *current_query_info=queries_info;
 
-		    // USEVC to use TCP (Virtual Circuit)
-		    options.flags = ARES_FLAG_USEVC;
+		    // set flags
+		    config_setting_t *flags_setting = config_setting_get_member(query, "flags");
+		    int flags_count;
+		    int j;
+		    const char *flag;
+		    int mapping_found;
+		    // reset options for this query
+		    options.flags = 0;
+		    if (flags_setting!=NULL) {
+			    // flags is a list of strings we need to map to an c-ares flag
+			    flags_count = config_setting_length(flags_setting);
+			    for (j=0; j<flags_count; j++){
+				    flag=config_setting_get_string_elem(flags_setting,j);
+				    mapping m;
+				    mapping_found = find_mapping(flag,&m);
+				    if (!mapping_found) {
+					    options.flags = options.flags||m.code;
+				    }
+			    }
+		    }
+		    // to have a callback when the socket changes state:
 		    //	optmask |= ARES_OPT_SOCK_STATE_CB;
 		    optmask |= ARES_OPT_FLAGS;
 
