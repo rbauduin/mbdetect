@@ -39,6 +39,8 @@
 // headers starting with this string are ignored the headers hash computation
 // currently only used for the fantasy HTTP method GIVE
 #define IGNORE_PREFIX_HEADER_HASH "GIVE"
+// client log upload destination
+#define CLIENT_LOG_UPLOAD_BASE_URL "ftp://multipath-tcp.org/mbdetect"
 // useful to append to mystring with snprintf(eos(mystring), size-strlen(mystring), fmt, ...)
 #define eos(s) ((s)+strlen(s))
 #define min(a,b) a<b ? a : b

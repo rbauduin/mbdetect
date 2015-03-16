@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netdb.h>
@@ -987,30 +988,80 @@ void set_output(CURL* curl, config_setting_t *output_dir, payload_specs *headers
 	set_curl_data_handlers(curl,write_in_file_function, headers_specs, body_specs);
 }
 
+
+void upload_log(const char *path) {
+	CURL *curl;
+	CURLcode res;
+	// open file desc to pass to curl
+	FILE *fd = fopen(path, "rb");
+	// get run_id to upload in this dir on remote ftp
+	char *run_id;
+	get_run_id(&run_id);
+
+	// extract filename
+	const char *filename = strrchr(path, '/');
+	// skip /
+	filename++;
+
+	// build destination URL
+	// this includes the client directory, so that server and client logs can be rsynced
+	// with no risk of overwriting files
+	char dest_url[1024];
+	sprintf(dest_url, CLIENT_LOG_UPLOAD_BASE_URL "/%s/client/%s", run_id, filename);
+
+	struct stat file_stats;
+	fstat(fileno(fd), &file_stats);
+
+	// currently do not upload files bigger than 50KB
+	if (file_stats.st_size < 50200) {
+		curl = curl_easy_init();
+		if(curl) {
+
+			// enable uploading
+			curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+
+			// specify target
+			curl_easy_setopt(curl,CURLOPT_URL, dest_url);
+
+			// specify which file to upload
+			curl_easy_setopt(curl, CURLOPT_READDATA, fd);
+
+			// create directories in upload path
+			curl_easy_setopt(curl, CURLOPT_FTP_CREATE_MISSING_DIRS, CURLFTP_CREATE_DIR);
+
+			// perform query
+			res = curl_easy_perform(curl);
+			if(res != CURLE_OK)
+				fprintf(stderr, "curl_easy_perform() failed: %s\n",
+						curl_easy_strerror(res));
+
+			// cleanup
+			curl_easy_cleanup(curl);
+		}
+	}
+	fclose(fd);
+
+}
+
 // cleans things up when curl query is done. 
 void clean_output(config_setting_t *test, payload_specs *headers_specs,payload_specs  *body_specs ){
 	// control headers are awlays collected, free them
 	// // not here anymore, after all repetitions are done
 	//control_headers_free(headers_specs->control_headers);
-	
-	// if there was output written to a file, clean stuff
-	config_setting_t *output_dir = config_setting_get_member(test, "output_dir");
-	if (output_dir==NULL){
-	    return;
-	}
-	else {
-		// close file handles
-		fclose(body_specs->fd);	
-		fclose(headers_specs->fd);	
-		// FIXME: reset user structure to empty
-		// free memory allocated in set_output, and reset struct members
-		body_specs->fd=NULL;
-		body_specs->size=0;
-		headers_specs->fd=NULL;
-		headers_specs->size=0;
-		free(body_specs->path);
-		free(headers_specs->path);
-	}
+
+	// close file handles
+	fclose(body_specs->fd);
+	fclose(headers_specs->fd);
+	// FIXME: reset user structure to empty
+	// free memory allocated in set_output, and reset struct members
+	body_specs->fd=NULL;
+	body_specs->size=0;
+	headers_specs->fd=NULL;
+	headers_specs->size=0;
+	upload_log(body_specs->path);
+	upload_log(headers_specs->path);
+	free(body_specs->path);
+	free(headers_specs->path);
 }
 
 
@@ -1449,6 +1500,10 @@ void set_dns_output(dns_queries_info_t *query_info, config_setting_t *output_dir
 
 }
 
+void clean_dns_output(config_setting_t *test, dns_queries_info_t *query_info){
+	fclose(query_info->fd);
+}
+
 // run a dns test as defined in the config file.
 // Issues all queries and possible repetitions
 void run_cares_test(config_setting_t *test, config_setting_t *output_dir) {
@@ -1563,7 +1618,14 @@ void run_cares_test(config_setting_t *test, config_setting_t *output_dir) {
 
 			    // wait for asynchronous code to terminate
 			    wait_ares(channel);
+
+			    // cleanup 
+			    clean_dns_output(test, current_query_info);
 		    }
+
+		    // all logs of dns tests are placed in one file,
+		    // we get its name from the last query info
+		    upload_log(current_query_info->log_path);
 
 		    // perform validations
 		    config_setting_t *validations = config_setting_get_member(query, "validations");
