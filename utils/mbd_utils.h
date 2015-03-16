@@ -1,5 +1,8 @@
 #include <sodium.h>
 #include <libconfig.h>
+
+
+#define SERVER_PORT "8080"
 // header names
 #define HEADER_HEADERS_HASH "X-NH-H-SHA256"
 #define HEADER_BODY_HASH "X-NH-D-SHA256"
