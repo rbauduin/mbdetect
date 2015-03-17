@@ -2,6 +2,7 @@
 #include <libconfig.h>
 
 
+#define NEW_URI_SIZE 1024
 #define SERVER_PORT "8080"
 #define SERVER_UID "daemon"
 // header names

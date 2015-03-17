@@ -184,14 +184,18 @@ void log_query(struct mg_connection *conn) {
 		post_data = strndup(conn->content, conn->content_len);
 		fprintf(fb,"%s", post_data);
 		fclose(fb);
+		free(post_data);
 	}
+	free(headers_path);
+	free(body_path);
 
 }
 
 int event_handler(struct mg_connection *conn, enum mg_event ev) {
   int i,random;
   // QUESTION what about doing it with pointer?
-  char new_uri[95];
+  char *new_uri;
+
   const char *run_id, *post_data;
   switch (ev) {
     case MG_AUTH: return MG_TRUE;
@@ -203,22 +207,21 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
 	// needs to be in the switch statement, or segfaults
         // do not process requests for /cumulus.jpg, let the standard handler do it
         // hence serving file from filesystem
-        if (!strcmp(conn->uri, "/files/cumulus.jpg")) {
+	if (!strcmp(conn->uri, "/files/cumulus.jpg")) {
 		// +20 : header name + ": " + some reserve, in case we change the name
 		mbd_deliver_file(conn );
-        	return MG_MORE;
-        }
+		return MG_MORE;
+	}
 
 	// requests to /random.jpg return a random image
-        if (!strcmp(conn->uri, "/random.jpg")) {
+	if (!strcmp(conn->uri, "/random.jpg")) {
 		random=rand()%10;
-		snprintf(new_uri,sizeof(new_uri),"/files/cumulus_%d.jpg", random);
-		
-		conn->uri=new_uri;
-		//printf("will return %s for client on port %d\n", conn->uri, conn->remote_port);
+		// we have allocated memory to be able to modify, but the struct still 
+		// has a const char* pointer, so cast to (char *)
+		snprintf((char *) conn->uri,NEW_URI_SIZE,"/files/cumulus_%d.jpg", random);
 		mbd_deliver_file(conn );
-        	return MG_MORE;
-        }
+		return MG_MORE;
+	}
 	
 	// If we get here, wee need to generate content ourself
         if (!strcmp(conn->uri, "/")) {

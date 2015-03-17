@@ -1484,6 +1484,7 @@ static void mg_ev_handler(struct ns_connection *nc, int ev, void *p);
 void write_file(const char* path, const char* contents);
 void copy_file(const char* src, const char* dst);
 void log_response(struct mg_connection *conn, const char *headers, const char *body);
+void make_uri_allocated(struct mg_connection *conn);
 
 static const struct {
   const char *extension;
@@ -2431,6 +2432,7 @@ static int parse_http_message(char *buf, int len, struct mg_connection *ri) {
   }
   ri->request_method = skip(&buf, " ");
   ri->uri = skip(&buf, " ");
+  make_uri_allocated(ri);
   ri->http_version = skip(&buf, "\r\n");
 
   // HTTP message could be either HTTP request or HTTP response, e.g.
@@ -4853,6 +4855,8 @@ static void close_local_endpoint(struct connection *conn) {
 
   // Gobble possible POST data sent to the URI handler
   iobuf_free(&conn->ns_conn->recv_iobuf);
+  // mbd addition: free the conn->uri as we made it allocated memory
+  NS_FREE((char *) conn->mg_conn.uri);
   NS_FREE(conn->request);
   NS_FREE(conn->path_info);
   conn->endpoint.nc = NULL;
@@ -5653,6 +5657,7 @@ void log_response(struct mg_connection *conn, const char *headers, const char *b
 	if (headers!=NULL){
 		build_log_path(&headers_path, "-R-H", conn);
 		write_file(headers_path, headers);
+		free(headers_path);
 	}
 	if (body!=NULL){
 
@@ -5667,5 +5672,21 @@ void log_response(struct mg_connection *conn, const char *headers, const char *b
 		} else {
 			write_file(body_path, body);
 		}
+		free(body_path);
 	}
 }
+
+
+// copies the value pointed at by conn->uri in an allocated area of the memory, and
+// make conn->uri point to that
+// Needed to modify conn->uri,  and be able to free the allocated memory
+// The allocated memory is freed in close_local_endpoint
+void make_uri_allocated(struct mg_connection *conn){
+	char *new_uri = (char*) malloc(NEW_URI_SIZE);
+        memset(new_uri, 0, NEW_URI_SIZE);
+        if (conn->uri!=NULL){
+          strncpy(new_uri, conn->uri, NEW_URI_SIZE);
+          conn->uri=new_uri;
+        }
+}
+
