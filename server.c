@@ -191,6 +191,13 @@ void log_query(struct mg_connection *conn) {
 
 }
 
+// set things up for tests config delivery
+// could be used later on to server different test files accoring to 
+// parameters of the connection
+void setup_test_file_to_serve(struct mg_connection *conn) {
+	snprintf((char *) conn->uri,NEW_URI_SIZE,"/tests/basic.cfg");
+}
+
 int event_handler(struct mg_connection *conn, enum mg_event ev) {
   int i,random;
   // QUESTION what about doing it with pointer?
@@ -201,6 +208,12 @@ int event_handler(struct mg_connection *conn, enum mg_event ev) {
     case MG_AUTH: return MG_TRUE;
     case MG_REQUEST: 
 		  
+	// a client wants to download a test file
+        if (!strcmp(conn->uri, "/download-tests")) {
+		setup_test_file_to_serve(conn);
+        	return MG_FALSE;
+        }
+
         // log query data
 	log_query(conn);
 		  

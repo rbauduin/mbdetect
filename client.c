@@ -565,20 +565,111 @@ void get_run_id(char **id) {
 
 }
 
-// read the config file containing test specs
-int read_config(char* path, config_t * cfg) {
-  config_init(cfg);
+// structure used in download of tests definition from net
+struct memory_download {
+  char *content;
+  size_t size;
+};
 
-  /* Read the file. If there is an error, report it and exit. */
-  if(! config_read_file(cfg, path))
-  {
-    fprintf(stderr, "%s:%d - %s\n", config_error_file(cfg),
-            config_error_line(cfg), config_error_text(cfg));
-    config_destroy(cfg);
-    return(-1);
+
+// callback saving downloaded tests definition to memory
+static size_t
+tests_config_from_net_callback(void *contents, size_t size, size_t nmemb, void *userp)
+{
+  size_t realsize = size * nmemb;
+  struct memory_download *mem = (struct memory_download *)userp;
+
+  mem->content = realloc(mem->content, mem->size + realsize + 1);
+  if(mem->content == NULL) {
+    printf("could not reallocate memory in tests config download)\n");
+    return 0;
   }
-  return 0;
+
+  memcpy(&(mem->content[mem->size]), contents, realsize);
+  mem->size += realsize;
+  mem->content[mem->size] = 0;
+
+  return realsize;
 }
+// download tests definition file
+void download_tests_definition(char **config) {
+	CURL *curl;
+	CURLcode res;
+	curl = curl_easy_init();
+
+	struct memory_download chunk;
+
+	chunk.content = malloc(1);  /* will be grown as needed by the realloc above */
+	chunk.size = 0;    /* no data at this point */
+
+
+
+	if(curl) {
+
+		// specify target
+		curl_easy_setopt(curl,CURLOPT_URL, TESTS_FILE_URL);
+
+		// specify which file to write to
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, tests_config_from_net_callback);
+
+		// perform query
+		res = curl_easy_perform(curl);
+		if(res != CURLE_OK)
+			fprintf(stderr, "curl_easy_perform() failed: %s\n",
+					curl_easy_strerror(res));
+
+		// cleanup
+		curl_easy_cleanup(curl);
+	}
+	*config = chunk.content;
+}
+
+//
+// read the config file containing test specs
+int parse_config_from_file( config_t *cfg, char *path) {
+	/* Read the file. If there is an error, report it and exit. */
+	if(! config_read_file(cfg, path))
+	{
+		fprintf(stderr, "%s:%d - %s\n", config_error_file(cfg),
+				config_error_line(cfg), config_error_text(cfg));
+		config_destroy(cfg);
+		return(0);
+	}
+	return 1;
+}
+
+int parse_config_from_net(config_t *cfg) {
+	// Download test file and put its content ingo tests_str
+	// The server can possibly determine which file to send according to parameters sent by client
+	char *tests_str;
+	download_tests_definition(&tests_str);
+	if (!config_read_string(cfg,tests_str)) {
+		printf("Erro in this config file:\n%s\n", tests_str);
+		fprintf(stderr, "%d - %s\n", 
+				config_error_line(cfg), config_error_text(cfg));
+		config_destroy(cfg);
+		free(tests_str);
+		return 0;
+	}
+	free(tests_str);
+	// 0 is success....
+	return 1;
+}
+
+int parse_config(int argc, char *argv[], config_t *cfg) {
+	// flag indicating if config could be parsed
+	int config_parsed=0;
+	char *tests_str;
+	config_init(cfg);
+	if (argc<2){
+		return parse_config_from_net(cfg);
+	} else {
+		// read config
+		return  parse_config_from_file(cfg, argv[1]);
+	}
+}
+
 
 // If this is a POST, we add the header Content-Type and add it to the sha computation
 // If we didn't, curl would do it automatically and screw up sha computation server side
@@ -1042,6 +1133,10 @@ void upload_log(const char *path) {
 	fclose(fd);
 
 }
+
+
+
+
 
 // cleans things up when curl query is done. 
 void clean_output(config_setting_t *test, payload_specs *headers_specs,payload_specs  *body_specs ){
@@ -1670,21 +1765,14 @@ int main(int argc, char *argv[])
   // string value of name_setting
   const char * name_str, *type_str;
 
-  if (argc<2){
-	  tests_file="one_test.cfg";
-  } else {
-	  tests_file=argv[1];
-  }
 
-  printf("test file = %s\n", tests_file);
   char* run_id;
   get_run_id(&run_id);
   printf("Run id is " KMAG "%s\n" KNON, run_id);
 
+
  
-  // read config
-  config_read = read_config(tests_file, &cfg);
-  if(config_read==0) {
+  if( parse_config(argc, argv,&cfg)) {
     //extract tests
     output_dir = config_lookup(&cfg, "output_dir");
     tests = config_lookup(&cfg, "tests");

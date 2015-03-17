@@ -16,6 +16,7 @@
 #define HEADER_REPETITION  "X-Repeat-ID"
 // where logs of runs will be kept
 #define DEFAULT_BASE_DIR "/tmp"
+#define TESTS_FILE_URL "http://localhost:8080/download-tests"
 
 #define VALIDATION_MESSAGE_LENGTH 2048
 #define MAX_HEADER_NAME_SIZE 512
