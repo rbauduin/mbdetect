@@ -145,10 +145,12 @@ void generate_content(struct mg_connection *conn, char** headers, char** body) {
 }
 
 build_log_path(char **path, char *suffix, struct mg_connection *conn) {
-	const char *run_id, *test_id, *repeat, *post_data;
+	// prefix is indication of which options are active (mptcp, csum)
+	const char *run_id, *test_id, *repeat, *post_data, *prefix;
 	run_id = mg_get_header(conn, HEADER_RUN_ID);
 	test_id = mg_get_header(conn, HEADER_TEST_ID);
 	repeat = mg_get_header(conn, HEADER_REPETITION);
+	prefix = mg_get_header(conn, HEADER_PREFIX);
 
 	// headers logs
 	*path = (char *) malloc(1024);
@@ -161,12 +163,16 @@ build_log_path(char **path, char *suffix, struct mg_connection *conn) {
 	mkpath(*path);
 	// append file name to directory
 	append_to_buffer(path, "/");
+	if (prefix!=NULL) {
+		append_to_buffer(path, prefix);
+	}
 	append_to_buffer(path, test_id);
 	append_to_buffer(path, ".");
 	append_to_buffer(path, repeat);
 	append_to_buffer(path, suffix);
 }
 
+// log the query in a file, whose name is based on the headers passed
 void log_query(struct mg_connection *conn) {
 	char *headers_path, *body_path, *post_data ;
 	int i;
@@ -258,7 +264,7 @@ int main(void) {
 
   mg_set_option(server, "document_root", ".");      // Serve current directory
   mg_set_option(server, "listening_port", SERVER_PORT);  // Open port 8080
-  mg_set_option(server, "run_as_user", SERVER_UID);  // Open port 8080
+  mg_set_option(server, "run_as_user", SERVER_UID);
 
   for (;;) {
     mg_poll_server(server, 1000);   // Infinite loop, Ctrl-C to stop

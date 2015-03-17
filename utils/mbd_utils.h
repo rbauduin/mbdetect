@@ -14,6 +14,7 @@
 #define HEADER_TEST_ID "X-Test-ID"
 #define HEADER_COMMIT_HASH "X-Commit"
 #define HEADER_REPETITION  "X-Repeat-ID"
+#define HEADER_PREFIX      "X-Prefix"
 // where logs of runs will be kept
 #define DEFAULT_BASE_DIR "/tmp"
 #define TESTS_FILE_URL "http://localhost:8080/download-tests"
