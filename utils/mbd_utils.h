@@ -3,6 +3,7 @@
 
 
 #define SERVER_PORT "8080"
+#define SERVER_UID "daemon"
 // header names
 #define HEADER_HEADERS_HASH "X-NH-H-SHA256"
 #define HEADER_BODY_HASH "X-NH-D-SHA256"

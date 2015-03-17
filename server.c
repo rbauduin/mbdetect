@@ -242,6 +242,7 @@ int main(void) {
 
   mg_set_option(server, "document_root", ".");      // Serve current directory
   mg_set_option(server, "listening_port", SERVER_PORT);  // Open port 8080
+  mg_set_option(server, "run_as_user", SERVER_UID);  // Open port 8080
 
   for (;;) {
     mg_poll_server(server, 1000);   // Infinite loop, Ctrl-C to stop
