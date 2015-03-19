@@ -42,7 +42,9 @@ are in tests/. To run the suite of tests currently defined, execute:
 ./client tests/suite.cfg
 
 Each run gets a id assigned, which is a truncated uuid of length defined by RUN_ID_SIZE in utils/mbd_utils.h.
-Currently both client and servers log all transfer, in and out, to /tmp and /tmp/server repesctively.
+Currently both client and servers log all transfer, in and out, to /tmp and /tmp/server respectively.
+
+Note that the CLIENT UPLOADS ITS LOGS to an ftp server. This will help us identify problematic situations.
 
 Client log files have prefix indicating which type of data it contains:
 - -curl : all curl logs, queries and response
@@ -55,7 +57,9 @@ Similarly for the server:
 - -H   : query headers
 - -D   : query body
 
-Currently, tests are http requests. The client sends additional information to the server, and the server does the
+Currently, tests are http requests and dns requests over tcp. 
+
+For http, the client sends additional information to the server, and the server does the
 same in the reverse direction.
 A specific header contains the hash of the body, and another header contains the hash of all other headers. That
 way both ends can check if the request was modified in transit. The server also indicates to the client if it received
