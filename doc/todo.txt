@@ -3,6 +3,12 @@
 - error handling
 - curl tests: check how logs are collected when multiple queries in one test, with some of them repeated
 - extract curl and dns tests to their own files, and make them independent
+- integrate tracebox
+- mptcp in userspace http://fr.slideshare.net/mobile/hajimetazaki/library-operating-system-for-linux-netdev01 http://www.catonmat.net/blog/simple-ld-preload-tutorial/
+- refactor query_info to have only one query_info type, which can be passed eg to upload_log so it can determine if the log should be uploaded based on test result
+- how do we react when a test fails, eg transfer hangs?
+- on which server, as we need to disable csum?
+- check security of values taken by the server from the headers to build the log paths
 
 
 - add control of headers in server code sending 404 [DONE]
@@ -14,3 +20,8 @@
 - add collection of what is sent to server. Currently only received data is collected [DONE]
 - rename output_file to output_dir and move it to the root of the config file (same value for all tests) [DONE]
 - support non curl tests in config file [DONE]
+- upload client logs [DONE]
+- do not crash when query empty.... at *(end+4)='\0'; [DONE]
+- do not crash when headers needed for log path are not there server.c:161 (build_log_path) [DONE]
+- disable mptcp for upload of logs and download of tests config [DONE]
+- repeat tests with/without mptcp, with/without mptcp csum [DONE]
