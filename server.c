@@ -152,17 +152,51 @@ build_log_path(char **path, char *suffix, struct mg_connection *conn) {
 	repeat = mg_get_header(conn, HEADER_REPETITION);
 	prefix = mg_get_header(conn, HEADER_PREFIX);
 
+
+	if (test_id==NULL) {
+		test_id="no_test_id";
+	}
+
+	if (repeat==NULL) {
+		repeat="no_repeat";
+	}
+
 	// headers logs
 	*path = (char *) malloc(1024);
 	memset(*path, 0, 1024);
 	*path[0]='\0';
 	append_to_buffer(path,DEFAULT_BASE_DIR);
 	append_to_buffer(path,"/server/");
-	append_to_buffer(path, run_id);
+
+	if (run_id==NULL) {
+		time_t current_time;
+		char *time_str=(char *)malloc(1024);
+		memset(time_str, 0, 1024);
+		struct tm * timeinfo;
+		time ( &current_time );
+		clock_t t;
+		t = clock();
+		printf("clock = %d\n", (int)t);
+		char c[6];
+		snprintf(c,6, ".%04d", (int)t);
+		printf("%d\n", (int) t);
+		printf("%s\n", c);
+
+		strftime(time_str,1024,"%Y%m%dT%T",gmtime(&current_time));
+		append_to_buffer(path, "no_run_id/");
+		append_to_buffer(path, time_str);
+		append_to_buffer(path, c);
+		free(time_str);
+	}
+	else {
+		append_to_buffer(path, run_id);
+	}
 	// this is the directory, create it
 	mkpath(*path);
 	// append file name to directory
 	append_to_buffer(path, "/");
+
+
 	if (prefix!=NULL) {
 		append_to_buffer(path, prefix);
 	}
