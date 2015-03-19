@@ -643,17 +643,26 @@ int parse_config_from_net(config_t *cfg) {
 	// Download test file and put its content ingo tests_str
 	// The server can possibly determine which file to send according to parameters sent by client
 	char *tests_str;
+	// download tests definition with mptcp disabled
+	int ori_mptcp = disable_mptcp();
 	download_tests_definition(&tests_str);
+	set_mptcp(ori_mptcp);
+
+	// try parse it
 	if (!config_read_string(cfg,tests_str)) {
 		printf("Erro in this config file:\n%s\n", tests_str);
 		fprintf(stderr, "%d - %s\n", 
 				config_error_line(cfg), config_error_text(cfg));
 		config_destroy(cfg);
+		// we do not need the config string anymore
 		free(tests_str);
+		// return failure
 		return 0;
 	}
+
 	free(tests_str);
-	// 0 is success....
+
+	// return success
 	return 1;
 }
 
@@ -1725,7 +1734,10 @@ void run_cares_test(config_setting_t *test, config_setting_t *output_dir, const 
 
 		    // all logs of dns tests are placed in one file,
 		    // we get its name from the last query info
+		    // we disable mptcp for this
+		    int ori_mptcp = disable_mptcp();
 		    upload_log(current_query_info->log_path);
+		    set_mptcp(ori_mptcp);
 
 		    // perform validations
 		    config_setting_t *validations = config_setting_get_member(query, "validations");
@@ -1854,7 +1866,7 @@ int main(int argc, char *argv[])
 		    }
 		    else {
 			printf(KRED "Cannot toggle mptcp, running with current setting, i.e. mptcp %s\n", (is_mptcp_active() ? "active" : "inactive")); 
-			run_test(test, output_dir, "TEST");
+			run_test(test, output_dir, (is_mptcp_active() ? "active" : "inactive") );
 		    }
 	    }
     }

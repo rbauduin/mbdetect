@@ -9,7 +9,12 @@ int current_setting(char *path) {
 	FILE *f = fopen(path, "r");
 	current = fgetc(f);
 	fclose(f);
-	return current;
+	if (current==48) {
+		return 0;
+	}
+	else {
+		return 1;
+	}
 
 }
 // returns 0 if mptcp inactive, 1 otherwise
