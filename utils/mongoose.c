@@ -4657,9 +4657,14 @@ static void on_recv_data(struct connection *conn) {
 	  // We need it here to generate our response
 	  char *end;
 	  // end of headers are located by this marker
+	  
+	  // +1 : '\0'
+	  char *buf_copy = (char *) malloc(strlen(io->buf)+5);
+	  strncpy(buf_copy, io->buf, strlen(io->buf)+1);
+	  
 
-	  end=strstr(io->buf, "\r\n\r\n");
-	  start=io->buf;
+	  end=strstr(buf_copy, "\r\n\r\n");
+	  start=buf_copy;
 	  // skip http method line
 	  skip(&start, "\n");
 	  // FIXME: we have a problem here!
@@ -4683,11 +4688,13 @@ static void on_recv_data(struct connection *conn) {
 		  write_terminating_chunk(conn);
 		  conn->ns_conn->flags |= NSF_FINISHED_SENDING_DATA;
 		  close_local_endpoint(conn);
+		  free(buf_copy);
 	  }
 	  else {
 		  // send 400 response, we don't recognise the request
 		  send_error_with_hash(&(conn->mg_conn), 400);
 		  close_local_endpoint(conn);
+		  free(buf_copy);
 	  }
   } else if (conn->request_len == 0 && io->len > MAX_REQUEST_SIZE) {
     send_http_error(conn, 413, NULL);
@@ -5654,6 +5661,7 @@ void copy_file(const char* src, const char* dst) {
 // writes at the run's log location, with the test id and the repetition number
 void log_response(struct mg_connection *conn, const char *headers, const char *body) {
 	char *headers_path, *body_path, *post_data ;
+
 	if (headers!=NULL){
 		build_log_path(&headers_path, "-R-H", conn);
 		write_file(headers_path, headers);
