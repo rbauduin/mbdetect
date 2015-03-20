@@ -176,11 +176,8 @@ build_log_path(char **path, char *suffix, struct mg_connection *conn) {
 		time ( &current_time );
 		clock_t t;
 		t = clock();
-		printf("clock = %d\n", (int)t);
 		char c[6];
 		snprintf(c,6, ".%04d", (int)t);
-		printf("%d\n", (int) t);
-		printf("%s\n", c);
 
 		strftime(time_str,1024,"%Y%m%dT%T",gmtime(&current_time));
 		append_to_buffer(path, "no_run_id/");
