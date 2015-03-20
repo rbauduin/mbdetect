@@ -13,6 +13,8 @@
 #include <sys/stat.h>
 #include "utils/mongoose.h"
 
+// declare function located in utils/replace_str
+char *repl_str(const char *str, const char *old, const char *new);
 
 // set a header line, only for content we generate ourself, not for use when serving files!
 int set_header_line(char **acc, int buffer_size, crypto_hash_sha256_state *state, char *addition) {
@@ -144,9 +146,29 @@ void generate_content(struct mg_connection *conn, char** headers, char** body) {
 
 }
 
+char * clean_log_path_component(const char * path) {
+	char *ret, *old;
+	ret = repl_str(path, "..", "");
+	old=ret;
+	ret = repl_str(old, "/", "");
+	free(old);
+	return ret;
+}
+
+// specific version of append_to_buffer for building paths,
+// cleaning components added to the path
+void append_to_path(char **path, const char* c) {
+	char *cleaned = clean_log_path_component(c);
+	append_to_buffer(path, cleaned);
+	free(cleaned);
+
+}
+
 build_log_path(char **path, char *suffix, struct mg_connection *conn) {
 	// prefix is indication of which options are active (mptcp, csum)
 	const char *run_id, *test_id, *repeat, *post_data, *prefix;
+	// cleaned component, ie, nasty characters removed, like ..
+	char * cleaned;
 	run_id = mg_get_header(conn, HEADER_RUN_ID);
 	test_id = mg_get_header(conn, HEADER_TEST_ID);
 	repeat = mg_get_header(conn, HEADER_REPETITION);
@@ -168,39 +190,53 @@ build_log_path(char **path, char *suffix, struct mg_connection *conn) {
 	append_to_buffer(path,DEFAULT_BASE_DIR);
 	append_to_buffer(path,"/server/");
 
+
+	// timestamp string that will be used later
+	time_t current_time;
+	char *time_str=(char *)malloc(1024);
+	memset(time_str, 0, 1024);
+	struct tm * timeinfo;
+	time ( &current_time );
+	strftime(time_str,1024,"%Y%m%dT%T",gmtime(&current_time));
+
+
+
+	// run_id component is name of directory
 	if (run_id==NULL) {
-		time_t current_time;
-		char *time_str=(char *)malloc(1024);
-		memset(time_str, 0, 1024);
-		struct tm * timeinfo;
-		time ( &current_time );
+		// if no run_id found, handle it
+		// add another component of 4 digits based on local clock to avoid collisions
 		clock_t t;
 		t = clock();
 		char c[6];
 		snprintf(c,6, ".%04d", (int)t);
 
-		strftime(time_str,1024,"%Y%m%dT%T",gmtime(&current_time));
 		append_to_buffer(path, "no_run_id/");
 		append_to_buffer(path, time_str);
 		append_to_buffer(path, c);
 		free(time_str);
 	}
 	else {
-		append_to_buffer(path, run_id);
+		append_to_path(path, run_id);
 	}
 	// this is the directory, create it
 	mkpath(*path);
 	// append file name to directory
 	append_to_buffer(path, "/");
 
+	// put timestamp in front
+	append_to_buffer(path, time_str);
+	append_to_buffer(path, "_");
+
 
 	if (prefix!=NULL) {
 		append_to_buffer(path, prefix);
 	}
-	append_to_buffer(path, test_id);
+	// test_id
+	append_to_path(path, test_id);
 	append_to_buffer(path, ".");
-	append_to_buffer(path, repeat);
-	append_to_buffer(path, suffix);
+	// repeat
+	append_to_path(path, repeat);
+	append_to_path(path, suffix);
 }
 
 // log the query in a file, whose name is based on the headers passed
