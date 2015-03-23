@@ -81,6 +81,9 @@ typedef struct write_dest {
 	size_t size;
 	// path to save payload to
 	char *path;
+	// path where we log curl information. Identical in headers_specs and body_specs
+	char *curl_path;
+	FILE *curl_fd;
 	// payload type, D for body, H for headers 
 	char type; 
 	crypto_hash_sha256_state sha_state;

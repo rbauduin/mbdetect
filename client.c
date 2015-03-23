@@ -218,6 +218,7 @@ void payload_specs_init(payload_specs* specs) {
 	specs->control_headers=NULL;
 	specs->fd=NULL;
 	specs->path=NULL;
+	specs->curl_path=NULL;
 }
 
 void collect_curl_info(CURL *curl, queries_info_t *queries_info){
@@ -1036,6 +1037,14 @@ void setup_payload_spec_file(payload_specs *specs, char* path) {
 		specs->path=path;
 }
 
+// include curl logs references in payload_specs
+void set_curl_logs_in_spec(payload_specs *specs, char *path, FILE *curl_logs) {
+	specs->curl_path=(char *)malloc(strlen(path)+1);
+	memset(specs->curl_path, 0, strlen(path)+1);
+	strncpy(specs->curl_path, path,strlen(path));
+	specs->curl_fd=curl_logs;
+}
+
 // sets up things to handle the data reaceived by curl
 void set_output(CURL* curl, config_setting_t *output_dir, payload_specs *headers_specs, payload_specs *body_specs, config_setting_t *test, int repeat, const char *prefix){
 
@@ -1057,8 +1066,14 @@ void set_output(CURL* curl, config_setting_t *output_dir, payload_specs *headers
 	build_log_file_path(base_path, test_id, repeat, prefix, "-curl", &curl_logs_path);
 	FILE *curl_logs=fopen(curl_logs_path, "w");
 	curl_easy_setopt(curl, CURLOPT_STDERR, curl_logs);
-	free(base_path);
+
+	// we put the curl logs path in both headers_specs and body_specs
+	set_curl_logs_in_spec(headers_specs, curl_logs_path, curl_logs);
+	set_curl_logs_in_spec(body_specs, curl_logs_path, curl_logs);
+
+
 	free(curl_logs_path);
+	free(base_path);
 
 	// pointers to function that will handle the data received
 	size_t (*discard_data_function)(void*, size_t, size_t, struct write_dest*);
@@ -1169,8 +1184,13 @@ void clean_output(config_setting_t *test, payload_specs *headers_specs,payload_s
 	headers_specs->size=0;
 	upload_log(body_specs->path);
 	upload_log(headers_specs->path);
+	fclose(headers_specs->curl_fd);
+	upload_log(headers_specs->curl_path);
+
 	free(body_specs->path);
+	free(body_specs->curl_path);
 	free(headers_specs->path);
+	free(headers_specs->curl_path);
 }
 
 
@@ -1261,9 +1281,10 @@ void run_curl_test(config_setting_t *test, config_setting_t *output_dir, const c
 			    res = curl_easy_perform(curl);
 			    /* Check for errors */ 
 			    double content_len;
-			    if(res != CURLE_OK)
+			    if(res != CURLE_OK){
 				    fprintf(stderr, "curl_easy_perform() failed: %s\n",
 						    curl_easy_strerror(res));
+			    }
 			    else {
 				    
 				    // compute headers and body hash 
@@ -1299,7 +1320,6 @@ void run_curl_test(config_setting_t *test, config_setting_t *output_dir, const c
 		    curl_slist_free_all(curl_headers);
 		    curl_easy_cleanup(curl);
 
-
 		    // extract validations for the query
 		    validations = config_setting_get_member(query, "validations");
 		    if (validations != NULL) {
@@ -1333,7 +1353,9 @@ void run_curl_test(config_setting_t *test, config_setting_t *output_dir, const c
 			    //printf("Body hash was %s\n", p->body_specs->sha);
 			    //printf("Headers hash was %s\n", p->headers_specs->sha);
 			    //printf("Number of connections was %lu\n", p->info.num_connects);
-			    control_headers_free(p->headers_specs->control_headers);
+			    if (p->headers_specs!=NULL) {
+				control_headers_free(p->headers_specs->control_headers);
+			    }
 			    free(p->headers_specs);
 			    free(p->body_specs);
 			    previous= p;
