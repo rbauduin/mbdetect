@@ -213,7 +213,6 @@ build_log_path(char **path, char *suffix, struct mg_connection *conn) {
 		append_to_buffer(path, "no_run_id/");
 		append_to_buffer(path, time_str);
 		append_to_buffer(path, c);
-		free(time_str);
 	}
 	else {
 		append_to_path(path, run_id);
@@ -226,6 +225,7 @@ build_log_path(char **path, char *suffix, struct mg_connection *conn) {
 	// put timestamp in front
 	append_to_buffer(path, time_str);
 	append_to_buffer(path, "_");
+	free(time_str);
 
 
 	if (prefix!=NULL) {
