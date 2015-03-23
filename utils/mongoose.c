@@ -4658,23 +4658,30 @@ static void on_recv_data(struct connection *conn) {
 	  char *end;
 	  // end of headers are located by this marker
 	  
+
+	  
 	  // +1 : '\0'
 	  char *buf_copy = (char *) malloc(strlen(io->buf)+5);
+	  memset(buf_copy, 0, strlen(io->buf)+5);
 	  strncpy(buf_copy, io->buf, strlen(io->buf)+1);
 	  
 
 	  end=strstr(buf_copy, "\r\n\r\n");
-	  start=buf_copy;
-	  // skip http method line
-	  skip(&start, "\n");
-	  // FIXME: we have a problem here!
-	  // headers are not handled correctly without it
-	  // but adding it without bound check can lead to a segfault
-	  // add EOS marker ourself
-	  *(end+4)='\0';
-	  // parse buffers, needed by generate_content to set indicator
-	  // of well received headers
-	  parse_http_headers(&start, &(conn->mg_conn));
+	  if (end!=NULL) {
+		  // We have a request content, we can handle it.
+		  start=buf_copy;
+		  // skip http method line
+		  skip(&start, "\n");
+		  // Manually put the EOS marker after the headers as io->buf seems to not be 
+		  // cleaned after the first time we take this path (some garbage at the end).
+		  // This causes the headers hash to be wrongly computed.
+		  // Ideally I would need to analyse why io->buf is not cleared corectly for the second
+		  // query. Leaving this as a FIXME for now.
+		  *(end+4)='\0';
+		  // parse buffers, needed by generate_content to set indicator
+		  // of well received headers
+		  parse_http_headers(&start, &(conn->mg_conn));
+	  }
 	  log_query(&(conn->mg_conn));
 	  if (!strncmp(HANDLED_400_METHOD, io->buf,strlen(HANDLED_400_METHOD))){
 		  // Generate body and headers
