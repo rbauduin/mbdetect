@@ -5148,8 +5148,13 @@ static void set_ips(struct ns_connection *nc, int is_rem) {
   char buf[100];
 
   ns_sock_to_str(nc->sock, buf, sizeof(buf), is_rem ? 7 : 3);
-  sscanf(buf, "%47[^:]:%hu",
-         is_rem ? c->remote_ip : c->local_ip,
+  // To parse ipv6, we look at the last ":" as the port number separator
+  // what is before it is the ip address, after it is the port number
+  char *port_separator = strrchr(buf, ':');
+  int sep_position = port_separator - buf;
+  memcpy(is_rem ? c->remote_ip : c->local_ip, buf, sep_position);
+  (is_rem ? c->remote_ip : c->local_ip)[sep_position+1]='\0';
+  sscanf(port_separator+1 , "%hu",
          is_rem ? &c->remote_port : &c->local_port);
   //DBG(("%p %s %s", conn, is_rem ? "rem" : "loc", buf));
 }
