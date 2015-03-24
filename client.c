@@ -1211,13 +1211,20 @@ void clean_output(config_setting_t *test, payload_specs *headers_specs,payload_s
 	headers_specs->size=0;
 	upload_log(body_specs->path);
 	upload_log(headers_specs->path);
-	fclose(headers_specs->curl_fd);
-	upload_log(headers_specs->curl_path);
+
+
+
+	// This cannot be done here with older versions of curl.
+	// This is replaced by code after a call too curl_easy_cleanup
+	// Look for comment "Closing curl logs fd and uploading files"
+	//
+	// fclose(headers_specs->curl_fd);
+	// upload_log(headers_specs->curl_path);
+	// free(body_specs->curl_path);
+	// free(headers_specs->curl_path);
 
 	free(body_specs->path);
-	free(body_specs->curl_path);
 	free(headers_specs->path);
-	free(headers_specs->curl_path);
 }
 
 
@@ -1346,6 +1353,16 @@ void run_curl_test(config_setting_t *test, config_setting_t *output_dir, const c
 		    }
 		    curl_slist_free_all(curl_headers);
 		    curl_easy_cleanup(curl);
+
+
+		    // Closing curl logs fd and uploading files
+		    queries_info_t *head = queries_info;
+		    while (head!=NULL){
+			    fclose(head->headers_specs->curl_fd);
+			    upload_log(head->headers_specs->curl_path);
+			    head = head->next;
+		    }
+
 
 		    // extract validations for the query
 		    validations = config_setting_get_member(query, "validations");
