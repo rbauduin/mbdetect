@@ -19,25 +19,26 @@ The code depends on libconfig (http://www.hyperrealm.com/libconfig/), libsodium 
 libuuid, c-ares, curl.
 
 To install packages on Debian/Ubuntu: 
-apt-get install libconfig-dev uuid-dev libc-ares-dev libcurl4-openssl-dev
+    apt-get install libconfig-dev uuid-dev libc-ares-dev libcurl4-openssl-dev
 
 Install libsodium from source. We recommend you use GNU stow to manage locally installed libraries
-apt-get install stow
+    apt-get install stow
 
 Download libsodium from https://download.libsodium.org/libsodium/releases/, decompress it and go in the source
 directory, then:
 
-./configure --prefix=/usr/local/stow/libsodium-1.0.2
-make
-make install # possibly with sudo
-cd /usr/local/stow
-sudo stow libsodium-1.0.2
+    ./configure --prefix=/usr/local/stow/libsodium-1.0.2
+    make
+    make install # possibly with sudo
+    cd /usr/local/stow
+    sudo stow libsodium-1.0.2
+    sudo ldconfig
 
 Compile client:
-make client
+    make client
 
 You can then run the client with:
-./client
+    ./client
 
 This will get the test suite from our server, and upload log files from your run to our FTP server. Do not run the client
 if you don't want to share your logs.
