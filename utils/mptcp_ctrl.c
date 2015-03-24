@@ -7,6 +7,9 @@ int current_setting(char *path) {
 	//   unsigned char casted to an int
 	int current;
 	FILE *f = fopen(path, "r");
+	if (f==NULL) {
+		return 0;
+	}
 	current = fgetc(f);
 	fclose(f);
 	if (current==48) {
