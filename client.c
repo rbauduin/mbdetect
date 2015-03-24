@@ -1917,8 +1917,8 @@ int main(int argc, char *argv[])
 			set_csum(ori_csum);
 		    }
 		    else {
-			client_log(KRED "Cannot toggle mptcp, running with current setting, i.e. mptcp %s\n" KNON, (is_mptcp_active() ? "active_mptcp_" : "inactive_mptcp_")); 
-			run_test(test, output_dir, (is_mptcp_active() ? "active" : "inactive") );
+			client_log(KRED "Cannot toggle mptcp, running with current setting, i.e. mptcp %s\n" KNON, (is_mptcp_active() ? "active" : "inactive")); 
+			run_test(test, output_dir, (is_mptcp_active() ? "active_mptcp_" : "inactive_mptcp") );
 		    }
 	    }
     }
