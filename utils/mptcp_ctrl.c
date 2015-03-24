@@ -25,7 +25,7 @@ int is_setting_active(char *path) {
 	// - current is return value from fgetc, giving an 
 	//   unsigned char casted to an int
 	int current = current_setting(path);
-	return current!=48; // 48 = int value of '0'
+	return current==1; // 48 = int value of '0'
 }
 
 // writes a 0 to mptcp_enabled file under /proc/sys
