@@ -16,10 +16,10 @@ We want to
 ## Installing and running the client
 
 The code depends on libconfig (http://www.hyperrealm.com/libconfig/), libsodium (http://doc.libsodium.org/),
-libuuid.
+libuuid, c-ares.
 
 To install packages on Debian/Ubuntu: 
-apt-get install libconfig-dev uuid-dev
+apt-get install libconfig-dev uuid-dev libc-ares-dev
 
 Install libsodium from source. We recommend you use GNU stow to manage locally installed libraries
 apt-get install stow
