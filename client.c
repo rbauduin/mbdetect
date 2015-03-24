@@ -337,6 +337,9 @@ int validate_http_headers(payload_specs *headers_specs, payload_specs *body_spec
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "transmitted headers hash: *%s*\n", headers_h);
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "computed headers sha256 :\n*%s*\n", headers_specs->sha);
 	}
+	else {
+		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), KGRN "Expected SHA received, headers were not modified!!\n" KNON);
+	}
 
 	res = validate_header(headers_specs->control_headers, HEADER_BODY_HASH, body_specs->sha);
 	if (res==HEADER_NOT_FOUND){
@@ -348,6 +351,9 @@ int validate_http_headers(payload_specs *headers_specs, payload_specs *body_spec
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), KRED "DIFFERENT SHA, BODY modified!!\n" KNON);
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "transmitted body hash: *%s*\n", headers_h);
 		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), "computed body sha256 :\n*%s*\n", body_specs->sha);
+	}
+	else {
+		snprintf(eos(*message), VALIDATION_MESSAGE_LENGTH-strlen(*message), KGRN "Expected SHA received, body was not modified!!\n" KNON);
 	}
 
 	res = validate_header(headers_specs->control_headers, HEADER_SERVER_RCVD_HEADERS, "1");
@@ -1814,7 +1820,7 @@ int validate_test_entry(config_setting_t *test) {
 	config_setting_t *type_setting = config_setting_get_member(test, "type");
 	if (name_setting!=NULL){
 		name_str = config_setting_get_string(name_setting);
-		client_log(KYEL "%s running...\n" KNON, name_str);
+		client_log(KYEL "\n%s running...\n" KNON, name_str);
 	}
 	else
 	{
