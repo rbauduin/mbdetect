@@ -33,7 +33,7 @@ make install
 cd /usr/local/stow
 sudo stow libsodium-1.0.2
 
-Compile client and server:
+Compile client:
 make client
 
 You can then run the client with:
