@@ -188,7 +188,7 @@ build_log_path(char **path, char *suffix, struct mg_connection *conn) {
 	memset(*path, 0, 1024);
 	*path[0]='\0';
 	append_to_buffer(path,DEFAULT_BASE_DIR);
-	append_to_buffer(path,"/server/");
+	append_to_buffer(path,"/");
 
 
 	// timestamp string that will be used later
@@ -217,6 +217,9 @@ build_log_path(char **path, char *suffix, struct mg_connection *conn) {
 	else {
 		append_to_path(path, run_id);
 	}
+
+	append_to_buffer(path,"/server/");
+	
 	// this is the directory, create it
 	mkpath(*path);
 	// append file name to directory
