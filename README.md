@@ -29,7 +29,7 @@ directory, then:
 
 ./configure --prefix=/usr/local/stow/libsodium-1.0.2
 make
-make install
+make install # possibly with sudo
 cd /usr/local/stow
 sudo stow libsodium-1.0.2
 
