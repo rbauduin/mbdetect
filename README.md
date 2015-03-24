@@ -64,7 +64,7 @@ headers unmodified in header X-H-HDRRCVOK.
 The client can perform some validation on the response, like http status, response size, etc. New validation should be easy to add.
 
 
-## Installing and running the server
+## Installing and running the server (optional)
 
 
 make server
