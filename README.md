@@ -13,7 +13,7 @@ We want to
 - check the behaviour of middleboxes that do not terminate the TCP connections
 - run each test with and without mptcp checksum enabled
 
-## Installation and running
+## Installing and running the client
 
 The code depends on libconfig (http://www.hyperrealm.com/libconfig/), libsodium (http://doc.libsodium.org/),
 libuuid.
@@ -35,32 +35,23 @@ sudo stow libsodium-1.0.2
 
 Compile client and server:
 make client
-make server
 
-Copy tests:
-cp -r tests.sample tests
+You can then run the client with:
+./client
 
-and edit the test files if needed (eg IP of server to contact).
-
-Run server with ./server. The client command requires one argument, the tests definition file. Examples
-are in tests/. To run the suite of tests currently defined, execute:
-./client tests/suite.cfg
+This will get the test suite from our server, and upload log files from your run to our FTP server. Do not run the client
+if you don't want to share your logs.
+The logs are uploaded to help us identify problematic situations.
 
 Each run gets a id assigned, which is a truncated uuid of length defined by RUN_ID_SIZE in utils/mbd_utils.h.
-Currently both client and servers log all transfer, in and out, to /tmp and /tmp/server respectively.
-
-Note that the CLIENT UPLOADS ITS LOGS to an ftp server. This will help us identify problematic situations.
+The client logs are saved under a directory named as the run id under /tmp.
 
 Client log files have prefix indicating which type of data it contains:
 - -curl : all curl logs, queries and response
 - -H : received headers
 - -D : received body
+The file client.log contains the output given to the user.
 
-Similarly for the server:
-- -R-H : response headers
-- -R-D : response body
-- -H   : query headers
-- -D   : query body
 
 Currently, tests are http requests and dns requests over tcp. 
 
@@ -72,8 +63,26 @@ headers unmodified in header X-H-HDRRCVOK.
 
 The client can perform some validation on the response, like http status, response size, etc. New validation should be easy to add.
 
-The server uses mongoose (http://cesanta.com/docs/Embed.shtml), which was modified to send headers described above and log all transfers.
 
+## Installing and running the server
+
+
+make server
+
+Copy tests:
+cp -r tests.sample tests
+
+and edit the test files if needed (eg IP of server to contact).
+
+Run server with ./server. 
+
+Logs of the server:
+- -R-H : response headers
+- -R-D : response body
+- -H   : query headers
+- -D   : query body
+
+The server uses mongoose (http://cesanta.com/docs/Embed.shtml), which was modified to send headers described above and log all transfers.
 
 ## Tests 
 
