@@ -1,5 +1,4 @@
 - fix  *(end+4)='\0'; in mongoose.c on_recv_data
-- repeat tests with and without mptcp, with and without mptch checksum
 - error handling
 - curl tests: check how logs are collected when multiple queries in one test, with some of them repeated
 - extract curl and dns tests to their own files, and make them independent
@@ -7,8 +6,7 @@
 - mptcp in userspace http://fr.slideshare.net/mobile/hajimetazaki/library-operating-system-for-linux-netdev01 http://www.catonmat.net/blog/simple-ld-preload-tutorial/
 - refactor query_info to have only one query_info type, which can be passed eg to upload_log so it can determine if the log should be uploaded based on test result
 - how do we react when a test fails, eg transfer hangs?
-- on which server, as we need to disable csum?
-- check security of values taken by the server from the headers to build the log paths
+- check security of values taken by the server from the headers to build the log paths [PARTIAL]
 
 
 - add control of headers in server code sending 404 [DONE]
@@ -25,3 +23,4 @@
 - do not crash when headers needed for log path are not there server.c:161 (build_log_path) [DONE]
 - disable mptcp for upload of logs and download of tests config [DONE]
 - repeat tests with/without mptcp, with/without mptcp csum [DONE]
+- put client user output in file to be uploaded too [DONE]
