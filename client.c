@@ -30,6 +30,7 @@
 // end cares
 
 
+
 // union type capable of holding each type of value found in validations
 typedef union validation_value_t {
 		int ival;
@@ -40,12 +41,32 @@ typedef union validation_value_t {
 
 
 
+void get_run_log_dir(config_setting_t *output_dir, char **run_path);
+FILE *log_file;
+char log_path[MAX_LOG_PATH_SIZE];
+
+#define client_log(...) do { printf(__VA_ARGS__) ; fprintf(log_file, __VA_ARGS__); } while (0)
+void setup_logging(config_setting_t *output_dir) {
+	char *path;
+	get_run_log_dir(output_dir, &path);
+	mkpath(path);
+	append_to_buffer(&path,"/");
+	append_to_buffer(&path,"client.log");
+	log_file=fopen(path, "w");
+	strncpy(log_path, path, MAX_LOG_PATH_SIZE);
+	free(path);
+}
+
+void close_logging() {
+	fclose(log_file);
+}
+
 int validate_info_value(queries_info_t *head, validations_mapping m, config_setting_t * entry,  char **message) {
 	// message for one iteration in the repetition on the query
 	char iteration_message[VALIDATION_MESSAGE_LENGTH];
 	config_setting_t *value_entry = config_setting_get_member(entry, "value");
 	if (value_entry == NULL) {
-		printf("value entry not found in validation\n");
+		client_log("value entry not found in validation\n");
 		return -1;
 	}
 	int i=0;
@@ -345,7 +366,7 @@ int validate_http_headers(payload_specs *headers_specs, payload_specs *body_spec
 int validate_header(control_header *list, char* header_name, char* expected_value) {
 	char* header_value=NULL;
 	if (list==NULL || expected_value==NULL || header_name==NULL){
-		printf("null values\n");
+		client_log("null values\n");
 		return NULL_OPERANDS;
 	}
 	get_header_value(list, header_name, &header_value);
@@ -472,7 +493,7 @@ int perform_validation(queries_info_t *queries_info,config_setting_t* entry, cha
 	validations_mapping m;
 	int mapping_found = find_validation_mapping(name_str,&m);
 	if (mapping_found) {
-		printf("ERROR, no validation mapping found for %s!\n", name_str);
+		client_log("ERROR, no validation mapping found for %s!\n", name_str);
 		exit(1);
 	}
 
@@ -494,7 +515,7 @@ int find_validation_mapping(const char* validation, validations_mapping *m) {
 		return 0;
 	}
 	else {
-		printf("Validation %s not handled by this code\n", validation);
+		client_log("Validation %s not handled by this code\n", validation);
 		return -1;
 	}
 
@@ -513,7 +534,7 @@ int find_mapping(const char* option, mapping* m) {
 		return 0;
 	}
 	else {
-		printf("Options %s not handled by this code\n", option);
+		client_log("Options %s not handled by this code\n", option);
 		return -1;
 	}
 
@@ -582,7 +603,7 @@ tests_config_from_net_callback(void *contents, size_t size, size_t nmemb, void *
 
   mem->content = realloc(mem->content, mem->size + realsize + 1);
   if(mem->content == NULL) {
-    printf("could not reallocate memory in tests config download)\n");
+    client_log("could not reallocate memory in tests config download)\n");
     return 0;
   }
 
@@ -736,7 +757,7 @@ void set_options(CURL* curl, config_setting_t *query, config_setting_t *test, in
 		mapping m;
 		mapping_found = find_mapping(name_str,&m);
 		if (mapping_found) {
-			printf("ERROR, no mapping found!\n");
+			client_log("ERROR, no mapping found!\n");
 			exit(1);
 		}
 		//printf("mapping : %s %s\n",m.name,m.type);
@@ -753,7 +774,7 @@ void set_options(CURL* curl, config_setting_t *query, config_setting_t *test, in
 			handle_post_options(additional_headers, name_str, value_long);
 		}
 		else {
-			printf("NO option type MATCH\n____________________________________\n");
+			client_log("NO option type MATCH\n____________________________________\n");
 		}
 	}
 }
@@ -763,7 +784,7 @@ void set_options(CURL* curl, config_setting_t *query, config_setting_t *test, in
 const char * get_test_id(config_setting_t *test){
 	config_setting_t *test_id_setting = config_setting_get_member(test, "id");
 	if (test_id_setting == NULL) {
-		printf("The test has no id, this is required!\n");
+		client_log("The test has no id, this is required!\n");
 		exit(1);
 	}
 	return config_setting_get_string(test_id_setting);
@@ -1152,7 +1173,7 @@ void upload_log(const char *path) {
 			// perform query
 			res = curl_easy_perform(curl);
 			if(res != CURLE_OK)
-				fprintf(stderr, "curl_easy_perform() failed: %s\n",
+				client_log("curl_easy_perform() failed: %s\n",
 						curl_easy_strerror(res));
 
 			// cleanup
@@ -1282,7 +1303,7 @@ void run_curl_test(config_setting_t *test, config_setting_t *output_dir, const c
 			    /* Check for errors */ 
 			    double content_len;
 			    if(res != CURLE_OK){
-				    fprintf(stderr, "curl_easy_perform() failed: %s\n",
+				    client_log("curl_easy_perform() failed: %s\n",
 						    curl_easy_strerror(res));
 			    }
 			    else {
@@ -1296,11 +1317,11 @@ void run_curl_test(config_setting_t *test, config_setting_t *output_dir, const c
 				    // validate headers for http queries
 				    if (is_protocol(curl, "http://")) {
 					    if (!validate_http_headers(headers_specs, body_specs, &message)) {
-						    printf(KRED "FAILURE!\n" KNON);
-						    printf("%s", message);
+						    client_log(KRED "FAILURE!\n" KNON);
+						    client_log("%s", message);
 					    }
 					    else {
-						    printf("%s", message);
+						    client_log("%s", message);
 					    }
 				    }
 
@@ -1331,7 +1352,7 @@ void run_curl_test(config_setting_t *test, config_setting_t *output_dir, const c
 				    // wipe message from previous validation
 				    memset(message,0,sizeof(message));
 				    perform_validation(queries_info, validation, &message);
-				    printf("%s",message);
+				    client_log("%s",message);
 
 			    }
 		    }
@@ -1709,7 +1730,7 @@ void run_cares_test(config_setting_t *test, config_setting_t *output_dir, const 
 		    // set options
 		    status = ares_init_options(&channel, &options, optmask);
 		    if(status != ARES_SUCCESS) {
-			    printf(KRED "problem ares_init_options: %s\n" KNON, ares_strerror(status));
+			    client_log(KRED "problem ares_init_options: %s\n" KNON, ares_strerror(status));
 			    return;
 		    }
 
@@ -1773,7 +1794,7 @@ void run_cares_test(config_setting_t *test, config_setting_t *output_dir, const 
 				    // wipe message from previous validation
 				    memset(message,0,sizeof(message));
 				    perform_dns_validation(queries_info, validation, &message);
-				    printf("%s",message);
+				    client_log("%s",message);
 
 			    }
 		    }
@@ -1793,18 +1814,18 @@ int validate_test_entry(config_setting_t *test) {
 	config_setting_t *type_setting = config_setting_get_member(test, "type");
 	if (name_setting!=NULL){
 		name_str = config_setting_get_string(name_setting);
-		printf(KYEL "%s running...\n" KNON, name_str);
+		client_log(KYEL "%s running...\n" KNON, name_str);
 	}
 	else
 	{
-		printf(KRED "no name provided for test, aborting..." KNON);
+		client_log(KRED "no name provided for test, aborting..." KNON);
 		return 0;
 	}
 
 
 
 	if (type_setting==NULL){
-		printf(KRED "Not type specified for test \"%s\"\n" KNON, name_str);
+		client_log(KRED "Not type specified for test \"%s\"\n" KNON, name_str);
 		return 0;
 	}
 }
@@ -1819,7 +1840,7 @@ void run_test(config_setting_t *test, config_setting_t *output_dir, const char* 
 		    run_cares_test(test,output_dir, prefix);
 	    }
 	    else {
-		    printf(KRED "Unknown test type \"%s\"\n" KNON, type_str);
+		    client_log(KRED "Unknown test type \"%s\"\n" KNON, type_str);
 	    }
 
 }
@@ -1845,20 +1866,23 @@ int main(int argc, char *argv[])
   const char * name_str, *type_str;
 
 
-  char* run_id;
-  get_run_id(&run_id);
-  printf("Run id is " KMAG "%s\n" KNON, run_id);
 
 
  
   if( parse_config(argc, argv,&cfg)) {
     //extract tests
     output_dir = config_lookup(&cfg, "output_dir");
+    // open file handle for client logs
+    setup_logging(output_dir);
     tests = config_lookup(&cfg, "tests");
+    char* run_id;
+    get_run_id(&run_id);
+    client_log("Run id is " KMAG "%s\n" KNON, run_id);
     if(tests != NULL) {
       tests_count = config_setting_length(tests);
        
-      printf("found %d tests\n", tests_count);
+      //printf("found %d tests\n", tests_count);
+      client_log("found %d tests\n", tests_count);
     }
     // iterate on tests
     for (i=0; i<tests_count; i++){
@@ -1867,19 +1891,19 @@ int main(int argc, char *argv[])
 		    if (can_toggle_mptcp()) {
 			int ori_mptcp = current_mptcp();
 			int ori_csum  = current_csum();
-			printf(KGRN "Can toggle mptcp\n" KNON); 
+			client_log(KGRN "Can toggle mptcp\n" KNON); 
 
 
-			printf(KYEL "Disabling mptcp\n" KNON); 
+			client_log(KYEL "Disabling mptcp\n" KNON); 
 			disable_mptcp();
 			disable_csum();
 			run_test(test, output_dir, "without_mptcp_");
 			
-			printf(KYEL "Enabling mptcp but no checksum\n" KNON); 
+			client_log(KYEL "Enabling mptcp but no checksum\n" KNON); 
 			enable_mptcp();
 			run_test(test, output_dir, "with_mptcp_no_csum_");
 			
-			printf(KYEL "Enabling checksum\n" KNON); 
+			client_log(KYEL "Enabling checksum\n" KNON); 
 			enable_csum();
 			run_test(test, output_dir, "with_mptcp_csum_");
 
@@ -1887,11 +1911,13 @@ int main(int argc, char *argv[])
 			set_csum(ori_csum);
 		    }
 		    else {
-			printf(KRED "Cannot toggle mptcp, running with current setting, i.e. mptcp %s\n", (is_mptcp_active() ? "active" : "inactive")); 
+			client_log(KRED "Cannot toggle mptcp, running with current setting, i.e. mptcp %s\n" KNON, (is_mptcp_active() ? "active" : "inactive")); 
 			run_test(test, output_dir, (is_mptcp_active() ? "active" : "inactive") );
 		    }
 	    }
     }
+    close_logging();
+    upload_log(log_path);
  
   }
   else {
