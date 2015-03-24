@@ -37,6 +37,11 @@ Compile client and server:
 make client
 make server
 
+Copy tests:
+cp -r tests.sample tests
+
+and edit the test files if needed (eg IP of server to contact).
+
 Run server with ./server. The client command requires one argument, the tests definition file. Examples
 are in tests/. To run the suite of tests currently defined, execute:
 ./client tests/suite.cfg
