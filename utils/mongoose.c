@@ -76,6 +76,7 @@
 #include <signal.h>
 #include <sodium.h>
 #include "mbd_utils.h"
+#include "mbd_version.h"
 
 #ifdef _WIN32
 #ifdef _MSC_VER
@@ -5532,7 +5533,7 @@ int mbd_deliver_file(struct mg_connection *mg_conn) {
 	// +2: \r\n
 	// +sizeof(HEADER_SERVER_RCVD_HEADERS) : headername
 	// +3: ": " + the value 0 or 1
-	char additional_headers[crypto_hash_sha256_BYTES*2+1+sizeof(HEADER_BODY_HASH)+2 +2 +sizeof(HEADER_SERVER_RCVD_HEADERS)+3];
+	char additional_headers[crypto_hash_sha256_BYTES*2+1+sizeof(HEADER_BODY_HASH)+2 +2 +sizeof(HEADER_SERVER_RCVD_HEADERS)+3 + sizeof(HEADER_COMMIT_HASH_SERVER) +2 + sizeof(GIT_COMMIT) +2];
 
 	exists = convert_uri_to_file_name(conn, path, sizeof(path), &st);
 	if (!exists) {
@@ -5555,9 +5556,11 @@ int mbd_deliver_file(struct mg_connection *mg_conn) {
 		// - indication if client headers received unmodified
 		int n = mg_snprintf(additional_headers, sizeof(additional_headers),
 				HEADER_BODY_HASH ": %s\r\n"
+				HEADER_COMMIT_HASH_SERVER ": %s\r\n"
 				HEADER_SERVER_RCVD_HEADERS ": %d"
 				,
 				sha, 
+				GIT_COMMIT,
 				validate_headers_sha(received_headers_sha, received_headers));
 		// setup the fd for mongoose
 		conn->endpoint.fd = open(path, O_RDONLY | O_BINARY, 0);
@@ -5596,6 +5599,7 @@ int send_error_with_hash(struct mg_connection *mg_conn, int code) {
 	headers_len = mg_snprintf(headers, sizeof(headers),
 			"HTTP/1.1 %d %s\r\nContent-Length: %d\r\n"
 			"Content-Type: text/plain\r\n"
+			HEADER_COMMIT_HASH_SERVER ": " GIT_COMMIT "\r\n"
 			HEADER_SERVER_RCVD_HEADERS ": %d\r\n"
 			,
 			code,

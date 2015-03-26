@@ -12,7 +12,8 @@
 #define HEADER_SERVER_RCVD_HEADERS "X-H-HDRRCVOK"
 #define HEADER_RUN_ID "X-Run-ID"
 #define HEADER_TEST_ID "X-Test-ID"
-#define HEADER_COMMIT_HASH "X-Commit"
+#define HEADER_COMMIT_HASH_SERVER "X-Commit-Server"
+#define HEADER_COMMIT_HASH_CLIENT "X-Commit-Client"
 #define HEADER_REPETITION  "X-Repeat-ID"
 #define HEADER_PREFIX      "X-Prefix"
 // where logs of runs will be kept

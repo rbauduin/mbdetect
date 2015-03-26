@@ -893,7 +893,7 @@ int set_headers(CURL* curl, config_setting_t *query, struct curl_slist* headers,
 	}
 
 	// header with commit hash (software version)
-	add_curl_sha_header_components(curl, &headers_state, &headers, HEADER_COMMIT_HASH, GIT_COMMIT);
+	add_curl_sha_header_components(curl, &headers_state, &headers, HEADER_COMMIT_HASH_CLIENT, GIT_COMMIT);
 
 	// header with test_id
         const char* test_id = get_test_id(test);

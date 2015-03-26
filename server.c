@@ -110,7 +110,7 @@ void generate_content(struct mg_connection *conn, char** headers, char** body) {
 	headers_buffer_size = set_header(headers, headers_buffer_size, &headers_state, "X-TeSt","WiTnEsS");
 	headers_buffer_size = set_header(headers, headers_buffer_size, &headers_state, "X-H-TEST","test control header");
 	headers_buffer_size = set_header(headers, headers_buffer_size, &headers_state, "X-H-RETEST","test control header");
-	headers_buffer_size = set_header(headers, headers_buffer_size, &headers_state, "X-Commit",GIT_COMMIT);
+	headers_buffer_size = set_header(headers, headers_buffer_size, &headers_state, HEADER_COMMIT_HASH_SERVER,GIT_COMMIT);
 	headers_buffer_size = set_header_line(headers, headers_buffer_size, &headers_state, "Transfer-Encoding: chunked\r\n");
 
 	// Check received headers
