@@ -16,7 +16,7 @@
 #define HEADER_REPETITION  "X-Repeat-ID"
 #define HEADER_PREFIX      "X-Prefix"
 // where logs of runs will be kept
-#define DEFAULT_BASE_DIR "/tmp"
+#define DEFAULT_BASE_DIR "./logs"
 //#define TESTS_FILE_URL "http://localhost:8080/download-tests"
 #define TESTS_FILE_URL "http://37.187.114.89/download-tests"
 
