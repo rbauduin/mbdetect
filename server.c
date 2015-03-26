@@ -271,7 +271,7 @@ void log_query(struct mg_connection *conn) {
 // could be used later on to server different test files accoring to 
 // parameters of the connection
 void setup_test_file_to_serve(struct mg_connection *conn) {
-	snprintf((char *) conn->uri,NEW_URI_SIZE,"/tests/basic.cfg");
+	snprintf((char *) conn->uri,NEW_URI_SIZE,"/tests/suite.cfg");
 }
 
 int event_handler(struct mg_connection *conn, enum mg_event ev) {

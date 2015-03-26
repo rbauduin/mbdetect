@@ -3,7 +3,7 @@
 
 
 #define NEW_URI_SIZE 1024
-#define SERVER_PORT "8080"
+#define SERVER_PORT "80"
 #define SERVER_UID "daemon"
 // header names
 #define HEADER_HEADERS_HASH "X-NH-H-SHA256"
