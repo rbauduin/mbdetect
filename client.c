@@ -151,6 +151,22 @@ int validate_info_same_port(queries_info_t *head, validations_mapping m, config_
 }
 
 
+int validate_info_different_ports(queries_info_t *head, validations_mapping m, config_setting_t * setting_entry, char** message) {
+	char iteration_message[VALIDATION_MESSAGE_LENGTH];
+	long long port=-1;
+	while (head!=NULL) {
+		if (head->info[LOCAL_PORT].llval == port){
+			snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,KRED "FAIL" KNON " (different ports): the same port was used for 2 subsequent queries!\n" KNON);
+			append_to_buffer(message, iteration_message);
+			return 0; 
+		}
+		snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH, KGRN "SUCCESS" KNON " (different ports)\n");
+		append_to_buffer(message, iteration_message);
+		head=head->next;
+	}
+	return 1;
+
+}
 
 // validations_mapping type is defined in mbd-utils.h
 // These mappings specify:
@@ -195,6 +211,7 @@ validations_mapping validations_mappings[]={
 	,{"num_connects", NUM_CONNECTS, validate_info_value}
 	,{"local_port", LOCAL_PORT, validate_info_value}
 	,{"same_port", NONE, validate_info_same_port}
+	,{"different_ports", NONE, validate_info_different_ports}
 };
 
 int validations_mappings_len = sizeof(validations_mappings)/sizeof(validations_mappings[0]);

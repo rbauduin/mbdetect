@@ -24,3 +24,4 @@
 - disable mptcp for upload of logs and download of tests config [DONE]
 - repeat tests with/without mptcp, with/without mptcp csum [DONE]
 - put client user output in file to be uploaded too [DONE]
+- check that port are different when run with "Connection: Close" header [DONE]
