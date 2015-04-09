@@ -594,7 +594,7 @@ void get_run_id(char **id) {
 		*id = uuid_str;
 	}
 	else {
-		uuid_generate_time(uuid);
+		uuid_generate_random(uuid);
 		uuid_str= malloc(sizeof(uuid)*2+1);
 		uuid_str[0]='\0';
 		char part[3];
