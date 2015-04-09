@@ -42,7 +42,7 @@
 #define DISCARD_OUTPUT "none"
 // how many characters from the uuid to keep when building the run id
 // useful when testing to handle much shorter paths
-#define RUN_ID_SIZE 6
+#define RUN_ID_SIZE 32
 // max length of path to which we can save run data
 #define MAX_LOG_PATH_SIZE 265
 // headers starting with this string are ignored the headers hash computation
