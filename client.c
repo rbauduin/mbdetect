@@ -1500,8 +1500,61 @@ int dns_result_code(dns_queries_info_t *info, struct dns_validations_mapping m, 
 			append_to_buffer(message, iteration_message);
 		}
 		else {
-			sprintf(iteration_message, KRED "Failure, unexpected return code %d\n" KNON, info->status);
+			sprintf(iteration_message, KRED "Failure, unexpected return code:\n" KNON);
 			append_to_buffer(message, iteration_message);
+
+			switch(info->status){
+				case ARES_ENOTIMP:
+					sprintf(iteration_message, KRED "ARES_ENOTIMP: type famlily not recognised\n" KNON);
+					append_to_buffer(message, iteration_message);
+					break;
+				case ARES_EBADNAME:
+					sprintf(iteration_message, KRED "ARES_EBADNAME: name is not valid internet address\n" KNON);
+					append_to_buffer(message, iteration_message);
+					break;
+				case ARES_ENOTFOUND:
+					sprintf(iteration_message, KRED "ARES_ENOTFOUND: name not found\n" KNON);
+					append_to_buffer(message, iteration_message);
+					break;
+				case ARES_ENOMEM:
+					sprintf(iteration_message, KRED "ARES_ENOMEM: memory exhausted\n" KNON);
+					append_to_buffer(message, iteration_message);
+					break;
+				case ARES_ECANCELLED:
+					sprintf(iteration_message, KRED "ARES_ECANCELLED: query was cancelled\n" KNON);
+					append_to_buffer(message, iteration_message);
+					break;
+				case ARES_EDESTRUCTION:
+					sprintf(iteration_message, KRED "ARES_EDESTRUCTION: ares channel destroyed, query cancelled\n" KNON);
+					append_to_buffer(message, iteration_message);
+					break;
+				case ARES_EBADQUERY:
+					sprintf(iteration_message, KRED "ARES_EBADQUERY\n" KNON);
+					append_to_buffer(message, iteration_message);
+					break;
+				case ARES_ECONNREFUSED:
+					sprintf(iteration_message, KRED "ARES_ECONNREFUSED\n" KNON);
+					append_to_buffer(message, iteration_message);
+					break;
+				case ARES_EBADFAMILY:
+					sprintf(iteration_message, KRED "ARES_EBADFAMILY\n" KNON);
+					append_to_buffer(message, iteration_message);
+					break;
+				case ARES_EBADRESP:
+					sprintf(iteration_message, KRED "ARES_EBADRESP\n" KNON);
+					append_to_buffer(message, iteration_message);
+					break;
+				case ARES_ETIMEOUT:
+					sprintf(iteration_message, KRED "ARES_ETIMEOUT\n" KNON);
+					append_to_buffer(message, iteration_message);
+					break;
+				case ARES_EBADSTR:
+					sprintf(iteration_message, KRED "ARES_EBADSTR\n" KNON);
+					append_to_buffer(message, iteration_message);
+					break;
+
+			}
+
 		}
 		info = info->next;
 	}
