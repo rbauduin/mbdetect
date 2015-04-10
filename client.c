@@ -2009,9 +2009,11 @@ int main(int argc, char *argv[])
 		    }
 	    }
     }
+    client_log("********************************************************************************\nRun id is " KMAG "%s" KNON "\n", run_id);
+    client_log("Access your logs online at http://www.multipath-tcp.org/mbdetect_logs/%s/\n", run_id);
+    client_log("********************************************************************************\n");
     close_logging();
     upload_log(log_path);
-    client_log("********************************************************************************\nRun id is " KMAG "%s" KNON "\n********************************************************************************\n" KNON, run_id);
  
   }
   else {
