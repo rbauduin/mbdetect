@@ -61,6 +61,29 @@ void close_logging() {
 	fclose(log_file);
 }
 
+int read_input(char** response) {
+    int c=EOF;
+    int previous='\n';
+    *response = (char *) malloc(256*sizeof(char));
+    memset(*response, 0, 256);
+
+    int current_size = 256;
+    int i=0;
+    while ( ! ( ( c = getchar() ) == previous && c == '\n') )
+    {
+	    previous=c;
+	    (*response)[i++]=(char)c;
+
+	    //if i reached maximize size then realloc size
+	    if(i == current_size)
+	    {
+		    current_size = i+256;
+		    *response = realloc(*response, current_size);
+	    }
+    }
+}
+
+
 int validate_info_value(queries_info_t *head, validations_mapping m, config_setting_t * entry,  char **message) {
 	// message for one iteration in the repetition on the query
 	char iteration_message[VALIDATION_MESSAGE_LENGTH];
@@ -1978,6 +2001,17 @@ int main(int argc, char *argv[])
       //printf("found %d tests\n", tests_count);
       client_log("found %d tests\n", tests_count);
     }
+    puts("Help us! You can optionally enter your email so we can contact you for debugging purposes:");
+    char *email=(char*)malloc(120*sizeof(char));
+    fgets(email, 120,stdin);
+    puts("If you wish you can also shortly describe your environment (end with an empty line):");
+    char *response;
+    read_input(&response);
+    fprintf(log_file, "Contact email: %s\n", email);
+    fprintf(log_file, "Description: %s\n", response);
+    free(email);
+    free(response);
+
     // iterate on tests
     for (i=0; i<tests_count; i++){
 	    test = config_setting_get_elem(tests, i);
