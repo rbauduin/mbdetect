@@ -2001,7 +2001,7 @@ int main(int argc, char *argv[])
       //printf("found %d tests\n", tests_count);
       client_log("found %d tests\n", tests_count);
     }
-    puts("Help us! You can optionally enter your email so we can contact you for debugging purposes:");
+    puts("\n\n\n\n\nHelp us! You can optionally enter your email so we can contact you for debugging purposes:");
     char *email=(char*)malloc(120*sizeof(char));
     fgets(email, 120,stdin);
     puts("If you wish you can also shortly describe your environment (end with an empty line):");
