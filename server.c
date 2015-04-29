@@ -172,6 +172,7 @@ build_log_path(char **path, char *suffix, struct mg_connection *conn) {
 	run_id = mg_get_header(conn, HEADER_RUN_ID);
 	test_id = mg_get_header(conn, HEADER_TEST_ID);
 	repeat = mg_get_header(conn, HEADER_REPETITION);
+	// prefix of the part following the test name!
 	prefix = mg_get_header(conn, HEADER_PREFIX);
 
 
@@ -225,21 +226,21 @@ build_log_path(char **path, char *suffix, struct mg_connection *conn) {
 	// append file name to directory
 	append_to_buffer(path, "/");
 
-	// put timestamp in front
-	append_to_buffer(path, time_str);
-	append_to_buffer(path, "_");
-	free(time_str);
-
-
+	// test_id
+	append_to_path(path, test_id);
+	append_to_buffer(path, ".");
 	if (prefix!=NULL) {
 		append_to_buffer(path, prefix);
 	}
-	// test_id
-	append_to_path(path, test_id);
 	append_to_buffer(path, ".");
 	// repeat
 	append_to_path(path, repeat);
 	append_to_path(path, suffix);
+	append_to_buffer(path, "_");
+	append_to_buffer(path, time_str);
+	free(time_str);
+
+
 }
 
 // log the query in a file, whose name is based on the headers passed

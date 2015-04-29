@@ -15,6 +15,7 @@
 #define HEADER_COMMIT_HASH_SERVER "X-Commit-Server"
 #define HEADER_COMMIT_HASH_CLIENT "X-Commit-Client"
 #define HEADER_REPETITION  "X-Repeat-ID"
+// first string following the test name in the log filename (prefix of the suffix...)
 #define HEADER_PREFIX      "X-Prefix"
 // where logs of runs will be kept
 #define DEFAULT_BASE_DIR "./logs"
