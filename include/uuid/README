@@ -1,0 +1,1 @@
+link to include/uuid.h needed for client.c android build, as it includes "uuid/uuid.h" for build on debian
