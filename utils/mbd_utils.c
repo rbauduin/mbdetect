@@ -179,7 +179,7 @@ int  append_to_buffer(char **acc, const char* addition){
 	  }
   }
   // append content to the accumulator
-  strlcat(*acc,addition);
+  strlcat(*acc,addition,new_size);
   return buffer_size;
 }
 
