@@ -10,7 +10,7 @@ TOOLCHAIN=arm-linux-androideabi-4.9
 CARES_VER=1.10.0
 LIBCONFIG_VER=1.4.9
 LIBSODIUM_VER=1.0.2
-CURL_VER=7.42.0
+CURL_VER=7.42.1
 
 ##
 ## This shouldn't need to be changed for a while ...
@@ -128,8 +128,7 @@ echo "#include <sys/types.h>" > usr/include/sys/bitypes.h
 #export CFLAGS="$CFLAGS -I$BASE_DIR/usr/include"
 export CXXFLAGS="$CXXFLAGS -I$BASE_DIR/usr/include"
 
-##for dep in CARES LIBCONFIG LIBSODIUM CURL; do
-for dep in CURL; do
+for dep in CARES LIBCONFIG LIBSODIUM CURL; do
     build_dep $dep
 done
 
