@@ -6,7 +6,7 @@
 #include "utils/mbd_utils.h"
 #include "utils/mbd_version.h"
 #include "utils/slist.h"
-//#include <uuid/uuid.h>
+#include <uuid/uuid.h>
 
 
 // libsodium for hash computation
@@ -582,40 +582,29 @@ int find_code(const char* option) {
 
 // build run id with a uuid
 void get_run_id(char **id) {
-	//uuid_t uuid;
+	uuid_t uuid;
 
-	//// uuid as string
-	//static char *uuid_str;
-	//// indicates if uuid was already generated
-	//static int valid = 0;
-	//// loop index
-	//size_t i; 
-	//
-	//if (valid) {
-	//	*id = uuid_str;
-	//}
-	//else {
-	//	uuid_generate_random(uuid);
-	//	uuid_str= malloc(sizeof(uuid)*2+1);
-	//	uuid_str[0]='\0';
-	//	char part[3];
-	//	for (i = 0; i < sizeof uuid && i < RUN_ID_SIZE/2; i ++) {
-	//		sprintf(part, "%02x", uuid[i]);
-	//		strncat(uuid_str, part, 2);
-	//	}
-	//	*id=uuid_str;
-	//	valid = 1;
-	//}
-	
-
-	static int valid = 0;
+	// uuid as string
 	static char *uuid_str;
-	uuid_str= malloc(60);
-	strcpy(uuid_str, "hellofromandroid");
-	*id=uuid_str;
-	valid = 1;
-
-
+	// indicates if uuid was already generated
+	static int valid = 0;
+	// loop index
+	size_t i; 
+	if (valid) {
+		*id = uuid_str;
+	}
+	else {
+		uuid_generate_random(uuid);
+		uuid_str= malloc(sizeof(uuid)*2+1);
+		uuid_str[0]='\0';
+		char part[3];
+		for (i = 0; i < sizeof uuid && i < RUN_ID_SIZE/2; i ++) {
+			sprintf(part, "%02x", uuid[i]);
+			strncat(uuid_str, part, 2);
+		}
+		*id=uuid_str;
+		valid = 1;
+	}
 }
 
 // structure used in download of tests definition from net
