@@ -183,3 +183,15 @@ int  append_to_buffer(char **acc, const char* addition){
   return buffer_size;
 }
 
+// get id of the test passed as argument
+const char * get_test_id(config_setting_t *test){
+	config_setting_t *test_id_setting = config_setting_get_member(test, "id");
+	if (test_id_setting == NULL) {
+		fprintf(stderr, "The test has no id, this is required!\n");
+		exit(1);
+	}
+	return config_setting_get_string(test_id_setting);
+
+}
+
+

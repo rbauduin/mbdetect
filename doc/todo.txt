@@ -7,6 +7,9 @@
 - refactor query_info to have only one query_info type, which can be passed eg to upload_log so it can determine if the log should be uploaded based on test result
 - how do we react when a test fails, eg transfer hangs?
 - check security of values taken by the server from the headers to build the log paths [PARTIAL]
+- define dns tests: what to resolve, what to check? (ips might change with location, eg yahoo, google)
+- create web interface to present result to users? Enter full run id, and get access to logs and results? Privacy problems?
+- check c-ares ipv6 resolution of mptcp.org
 
 
 - add control of headers in server code sending 404 [DONE]
