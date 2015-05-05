@@ -67,6 +67,25 @@
 #define KCYN  "\x1B[36m"
 #define KWHT  "\x1B[37m"
 
+
+// This maps the curl/cares options from their name to their actual value, eg "CURLOPT_URL" to CURLOPT_URL.
+// It also specifies the type of data the option expects
+
+typedef struct {
+	char *name;
+	int code;
+	char *type;
+} mapping;
+
+// union type capable of holding each type of value found in validations
+typedef union validation_value_t {
+		int ival;
+		long long llval;
+		double fval;
+		char *sval;
+} validation_value_t;
+
+
 // store  headers of the request in a chained list
 typedef struct control_header {
 	char *name;
@@ -143,3 +162,6 @@ void add_sha_headers_components(crypto_hash_sha256_state *received_headers_state
 void collect_control_header_components(control_header **headers, const char *name, const char *value);
 int is_header_in_hash(const char* contents);
 int  append_to_buffer(char **acc, const char* addition);
+const char * get_test_id(config_setting_t *test);
+FILE *log_file;
+#define client_log(...) do { printf(__VA_ARGS__) ; fprintf(log_file, __VA_ARGS__); } while (0)
