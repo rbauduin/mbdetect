@@ -133,4 +133,5 @@ for dep in CARES LIBCONFIG LIBSODIUM CURL; do
 done
 
 export CC=arm-linux-androideabi-gcc
-make client
+# -e : environment variables override those defined in Makefile
+make -e android
