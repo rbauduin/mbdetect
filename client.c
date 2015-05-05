@@ -61,6 +61,29 @@ void close_logging() {
 	fclose(log_file);
 }
 
+int read_input(char** response) {
+    int c=EOF;
+    int previous='\n';
+    *response = (char *) malloc(256*sizeof(char));
+    memset(*response, 0, 256);
+
+    int current_size = 256;
+    int i=0;
+    while ( ! ( ( c = getchar() ) == previous && c == '\n') )
+    {
+	    previous=c;
+	    (*response)[i++]=(char)c;
+
+	    //if i reached maximize size then realloc size
+	    if(i == current_size)
+	    {
+		    current_size = i+256;
+		    *response = realloc(*response, current_size);
+	    }
+    }
+}
+
+
 int validate_info_value(queries_info_t *head, validations_mapping m, config_setting_t * entry,  char **message) {
 	// message for one iteration in the repetition on the query
 	char iteration_message[VALIDATION_MESSAGE_LENGTH];
@@ -1010,6 +1033,14 @@ void get_run_log_dir(config_setting_t *output_dir, char **run_path){
 
 }
 
+// concatenate 2 suffixes to use for log files
+void build_suffix(char** full_suffix, const char *mptcp_flag_suffix, const char *log_suffix) {
+	*full_suffix = (char *) malloc(strlen(mptcp_flag_suffix)+strlen(log_suffix)+1);
+	memset(*full_suffix,0,sizeof(*full_suffix));
+	strncat(*full_suffix,mptcp_flag_suffix,strlen(mptcp_flag_suffix));
+	strncat(*full_suffix,log_suffix, strlen(log_suffix));
+}
+
 // log_dir is the log directory for this run
 // test_id is the id of this test as found in the config file
 // repeat is the repetition number of this query
@@ -1034,7 +1065,7 @@ build_log_file_path(const char *log_dir, const char *test_id, int repeat, const 
 }
 
 // builds the paths where the body and headers of the query will be saved
-void build_file_paths(config_setting_t *output_dir, char** headers_path, char** body_path, const char *test_id, int repeat, const char *prefix){
+void build_file_paths(config_setting_t *output_dir, char** headers_path, char** body_path, const char *test_id, int repeat, const char *suffix){
 		// the base_path is found in the config file. To that
 		// we append -D for the body, and -H for the headers,
 		// and we have the files paths where we write to
@@ -1045,8 +1076,13 @@ void build_file_paths(config_setting_t *output_dir, char** headers_path, char** 
 		mkpath(base_path);
 
 		// build log file for received headers and body
-		build_log_file_path(base_path, test_id, repeat, prefix, "-D", body_path);
-		build_log_file_path(base_path, test_id, repeat, prefix, "-H", headers_path);
+		char* full_suffix;
+		build_suffix(&full_suffix, suffix, "-D");
+		build_log_file_path(base_path, test_id, repeat, NULL, full_suffix, body_path);
+		free(full_suffix);
+		build_suffix(&full_suffix, suffix, "-H");
+		build_log_file_path(base_path, test_id, repeat, NULL, full_suffix, headers_path);
+		free(full_suffix);
 
 		free(base_path);
 }
@@ -1087,7 +1123,7 @@ void set_curl_logs_in_spec(payload_specs *specs, char *path, FILE *curl_logs) {
 }
 
 // sets up things to handle the data reaceived by curl
-void set_output(CURL* curl, config_setting_t *output_dir, payload_specs *headers_specs, payload_specs *body_specs, config_setting_t *test, int repeat, const char *prefix){
+void set_output(CURL* curl, config_setting_t *output_dir, payload_specs *headers_specs, payload_specs *body_specs, config_setting_t *test, int repeat, const char *suffix){
 
 
 	// extract test id
@@ -1104,7 +1140,10 @@ void set_output(CURL* curl, config_setting_t *output_dir, payload_specs *headers
 
 	// setup curl logs to file with -curl suffix
 	char * curl_logs_path;
-	build_log_file_path(base_path, test_id, repeat, prefix, "-curl", &curl_logs_path);
+	char *full_suffix;
+	build_suffix(&full_suffix, suffix, "-curl");
+	build_log_file_path(base_path, test_id, repeat, NULL, full_suffix, &curl_logs_path);
+	free(full_suffix);
 	FILE *curl_logs=fopen(curl_logs_path, "w");
 	curl_easy_setopt(curl, CURLOPT_STDERR, curl_logs);
 
@@ -1138,7 +1177,7 @@ void set_output(CURL* curl, config_setting_t *output_dir, payload_specs *headers
 	// we get here either if output_dir is NULL, or it is not NULL but different from DISCARD_OUTPUT
 	// setup the config structure passed to successive call of the callback
 	// get paths where to save headers and body respectively
-	build_file_paths(output_dir, &headers_path, &body_path, test_id, repeat, prefix);
+	build_file_paths(output_dir, &headers_path, &body_path, test_id, repeat, suffix);
 
 	// open file handle, setup struct and passit to curl
 	// Body
@@ -1242,7 +1281,7 @@ void clean_output(config_setting_t *test, payload_specs *headers_specs,payload_s
 }
 
 
-void run_curl_test(config_setting_t *test, config_setting_t *output_dir, const char* prefix) {
+void run_curl_test(config_setting_t *test, config_setting_t *output_dir, const char* suffix) {
   CURL *curl;
   CURLcode res;
 
@@ -1321,9 +1360,9 @@ void run_curl_test(config_setting_t *test, config_setting_t *output_dir, const c
 			    // set options and headers
 			    control_header *additional_headers=NULL;
 			    set_options(curl, query, test, l, &additional_headers);
-			    set_output(curl, output_dir, headers_specs, body_specs, test, l, prefix);
+			    set_output(curl, output_dir, headers_specs, body_specs, test, l, suffix);
 			    curl_headers=NULL;
-			    set_headers(curl, query, curl_headers, test, l, prefix, additional_headers);
+			    set_headers(curl, query, curl_headers, test, l, suffix, additional_headers);
 
 			    // Perform query
 			    res = curl_easy_perform(curl);
@@ -1722,7 +1761,7 @@ callback(void *arg, int status, int timeouts, struct hostent *host)
 }
 
 // builds the log path, and puts info in query_info
-void set_dns_output(dns_queries_info_t *query_info, config_setting_t *output_dir, config_setting_t *test, int repeat, const char *prefix) {
+void set_dns_output(dns_queries_info_t *query_info, config_setting_t *output_dir, config_setting_t *test, int repeat, const char *suffix) {
 	char *log_path;
 	char *base_path;
 	const char *test_id = get_test_id(test);
@@ -1734,7 +1773,10 @@ void set_dns_output(dns_queries_info_t *query_info, config_setting_t *output_dir
 	mkpath(base_path);
 
 	// All logs of dns tests go the the same file, even in case of repetitions
-	build_log_file_path(base_path, test_id, 0, prefix, ".dns", &log_path);
+	char *full_suffix;
+	build_suffix(&full_suffix, suffix, ".dns");
+	build_log_file_path(base_path, test_id, 0, NULL, full_suffix, &log_path);
+	free(full_suffix);
 
 	// put info in query_info
 	strncpy(query_info->log_path, log_path, MAX_LOG_PATH_SIZE);
@@ -1748,7 +1790,7 @@ void clean_dns_output(config_setting_t *test, dns_queries_info_t *query_info){
 
 // run a dns test as defined in the config file.
 // Issues all queries and possible repetitions
-void run_cares_test(config_setting_t *test, config_setting_t *output_dir, const char *prefix) {
+void run_cares_test(config_setting_t *test, config_setting_t *output_dir, const char *suffix) {
 
 	ares_channel channel;
 	int status;
@@ -1851,7 +1893,7 @@ void run_cares_test(config_setting_t *test, config_setting_t *output_dir, const 
 			    strncpy(current_query_info->domain, host, MAX_DOMAIN_SIZE);
 
 			    // setup logs
-			    set_dns_output(current_query_info, output_dir, test, l, prefix);
+			    set_dns_output(current_query_info, output_dir, test, l, suffix);
 
 			    // issue request
 			    ares_gethostbyname(channel, host, AF_INET, callback, current_query_info);
@@ -1920,14 +1962,14 @@ int validate_test_entry(config_setting_t *test) {
 	}
 }
 
-void run_test(config_setting_t *test, config_setting_t *output_dir, const char* prefix) {
+void run_test(config_setting_t *test, config_setting_t *output_dir, const char* suffix) {
 	    config_setting_t *type_setting = config_setting_get_member(test, "type");
 	    const char *type_str = config_setting_get_string(type_setting);
 	    if (!strcmp(type_str,"curl")) {
-		    run_curl_test(test, output_dir, prefix);
+		    run_curl_test(test, output_dir, suffix);
 	    }
 	    else if (!strcmp(type_str,"dns")) {
-		    run_cares_test(test,output_dir, prefix);
+		    run_cares_test(test,output_dir, suffix);
 	    }
 	    else {
 		    client_log(KRED "Unknown test type \"%s\"\n" KNON, type_str);
@@ -1974,6 +2016,17 @@ int main(int argc, char *argv[])
       //printf("found %d tests\n", tests_count);
       client_log("found %d tests\n", tests_count);
     }
+    puts("\n\n\n\n\nHelp us! You can optionally enter your email so we can contact you for debugging purposes:");
+    char *email=(char*)malloc(120*sizeof(char));
+    fgets(email, 120,stdin);
+    puts("If you wish you can also shortly describe your environment (end with an empty line):");
+    char *response;
+    read_input(&response);
+    fprintf(log_file, "Contact email: %s\n", email);
+    fprintf(log_file, "Description: %s\n", response);
+    free(email);
+    free(response);
+
     // iterate on tests
     for (i=0; i<tests_count; i++){
 	    test = config_setting_get_elem(tests, i);
@@ -1987,22 +2040,22 @@ int main(int argc, char *argv[])
 			client_log(KYEL "Disabling mptcp\n" KNON); 
 			disable_mptcp();
 			disable_csum();
-			run_test(test, output_dir, "without_mptcp_");
+			run_test(test, output_dir, "_without_mptcp");
 			
 			client_log(KYEL "Enabling mptcp but no checksum\n" KNON); 
 			enable_mptcp();
-			run_test(test, output_dir, "with_mptcp_no_csum_");
+			run_test(test, output_dir, "_with_mptcp_no_csum");
 			
 			client_log(KYEL "Enabling checksum\n" KNON); 
 			enable_csum();
-			run_test(test, output_dir, "with_mptcp_csum_");
+			run_test(test, output_dir, "_with_mptcp_csum");
 
 			set_mptcp(ori_mptcp);
 			set_csum(ori_csum);
 		    }
 		    else {
 			client_log(KRED "Cannot toggle mptcp, running with current setting, i.e. mptcp %s\n" KNON, (is_mptcp_active() ? "active" : "inactive")); 
-			run_test(test, output_dir, (is_mptcp_active() ? "active_mptcp_" : "inactive_mptcp") );
+			run_test(test, output_dir, (is_mptcp_active() ? "_active_mptcp" : "_inactive_mptcp") );
 		    }
 	    }
     }
