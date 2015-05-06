@@ -71,11 +71,6 @@
 // This maps the curl/cares options from their name to their actual value, eg "CURLOPT_URL" to CURLOPT_URL.
 // It also specifies the type of data the option expects
 
-typedef struct {
-	char *name;
-	int code;
-	char *type;
-} mapping;
 
 // union type capable of holding each type of value found in validations
 typedef union validation_value_t {
@@ -149,6 +144,12 @@ typedef struct validations_mapping{
 	int (*f)(queries_info_t *head, struct validations_mapping m, config_setting_t * entry,  char **message);
 } validations_mapping;
 
+typedef struct mapping{
+	const char *name;
+	int code;
+	const char *type;
+	struct mapping *next;
+} mapping;
 
 int is_control_header(const char* contents);
 void sha_from_state(crypto_hash_sha256_state *state, char(* sha)[crypto_hash_sha256_BYTES*2+1]);

@@ -15,6 +15,9 @@ server: server.o
 	${CC} -o server server.o mongoose.o mbd_utils.o strlcat.o strlcpy.o mkpath.o repl_str.o -pthread -lsodium
 test: client
 	./client tests/curl_tests.cfg
+dns: dns_tests.c
+	gcc -c  -lcares -fpic dns_tests.c
+	gcc -shared -fpic -o libdns_tests.so dns_tests.o -lcares
 clean: 
 	rm -f *.o client server
 set_version:
