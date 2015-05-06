@@ -495,5 +495,13 @@ void run_cares_test(config_setting_t *test, config_setting_t *output_dir, const 
 }
 
 
+void init_options() {
+	mapping additions[]= {{"ARES_SUCCESS", ARES_SUCCESS, "int", NULL},
+		{"ARES_ENOTFOUND", ARES_ENOTFOUND, "int", NULL},
+		{"ARES_FLAG_USEVC", ARES_FLAG_USEVC, "int", NULL}
+	};
+	append_mappings(additions, sizeof(additions)/sizeof(additions[0])); 
+}
+
 /////////////////////// end C-ares test ////////////////////////////////////////
 

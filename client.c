@@ -218,27 +218,55 @@ validations_mapping validations_mappings[]={
 
 int validations_mappings_len = sizeof(validations_mappings)/sizeof(validations_mappings[0]);
 
+// declaration of mappings of option name to their constant's value
+// declared as global for easier initialisation (avoids passing the pointer to pointer to append_mappings) 
+// and avoids changing multiple functions. 
+mapping *mappings;
 
-mapping mappings[] =  {
-	{"CURLOPT_URL", CURLOPT_URL, "str"}
-// We don not support CURLOPT_HEADER, as it interferes with body sha256 computation
-//	,{"CURLOPT_HEADER", CURLOPT_HEADER, "long"}
-	,{"CURLOPT_FOLLOWLOCATION", CURLOPT_FOLLOWLOCATION, "long"}
-	,{"CURLOPT_POST", CURLOPT_POST, "long"}
-	,{"CURLOPT_POSTFIELDSIZE", CURLOPT_POSTFIELDSIZE, "long"}
-	,{"CURLOPT_POSTFIELDS",CURLOPT_POSTFIELDS,"str"}
-	,{"CURLINFO_SIZE_DOWNLOAD",CURLINFO_SIZE_DOWNLOAD,"double"}
-	,{"CURLINFO_RESPONSE_CODE",CURLINFO_RESPONSE_CODE ,"int"}
-	,{"CURLINFO_EFFECTIVE_URL",CURLINFO_EFFECTIVE_URL ,"string"}
-	,{"CURLOPT_CUSTOMREQUEST", CURLOPT_CUSTOMREQUEST, "string"}
-	,{"CURLOPT_TIMEOUT", CURLOPT_TIMEOUT, "long"}
-	,{"ARES_SUCCESS", ARES_SUCCESS, "int"}
-	,{"ARES_ENOTFOUND", ARES_ENOTFOUND, "int"}
-	,{"ARES_FLAG_USEVC", ARES_FLAG_USEVC, "int"}
-	
-}; 
+int append_mappings(mapping *additions, int length) {
+	// loop index
+	int i;
+	// next will be the mapping we need to initialise
+	mapping *next=mappings;
+	if (next==NULL) {
+		mappings=(mapping*)malloc(sizeof(mapping));
+		next=mappings;
+	} else {
+		while (next->next!=NULL) {
+			next=next->next;
+		}
+		next=(mapping*)malloc(sizeof(mapping));
+	}
+	// from here next correctly point to the next mapping in the list to be initialised
+	for (i=0; i<length; i++){
+		printf("Adding mapping to %s\n", (additions+i)->name);
+		// copy value to memory
+		memcpy(next,additions+i, sizeof(mapping));
+		// set pointer to last element
+		next->next = (mapping*)malloc(sizeof(mapping));
+		next = next->next;
+	}
+}
 
-int mappings_len = sizeof(mappings)/sizeof(mappings[0]);
+//mapping mappings[] =  {
+//	{"CURLOPT_URL", CURLOPT_URL, "str"}
+//// We don not support CURLOPT_HEADER, as it interferes with body sha256 computation
+////	,{"CURLOPT_HEADER", CURLOPT_HEADER, "long"}
+//	,{"CURLOPT_FOLLOWLOCATION", CURLOPT_FOLLOWLOCATION, "long"}
+//	,{"CURLOPT_POST", CURLOPT_POST, "long"}
+//	,{"CURLOPT_POSTFIELDSIZE", CURLOPT_POSTFIELDSIZE, "long"}
+//	,{"CURLOPT_POSTFIELDS",CURLOPT_POSTFIELDS,"str"}
+//	,{"CURLINFO_SIZE_DOWNLOAD",CURLINFO_SIZE_DOWNLOAD,"double"}
+//	,{"CURLINFO_RESPONSE_CODE",CURLINFO_RESPONSE_CODE ,"int"}
+//	,{"CURLINFO_EFFECTIVE_URL",CURLINFO_EFFECTIVE_URL ,"string"}
+//	,{"CURLOPT_CUSTOMREQUEST", CURLOPT_CUSTOMREQUEST, "string"}
+//	,{"CURLOPT_TIMEOUT", CURLOPT_TIMEOUT, "long"}
+//	,{"ARES_SUCCESS", ARES_SUCCESS, "int"}
+//	,{"ARES_ENOTFOUND", ARES_ENOTFOUND, "int"}
+//	,{"ARES_FLAG_USEVC", ARES_FLAG_USEVC, "int"}
+//	
+//}; 
+
 
 
 // stuff to write output to file
@@ -543,12 +571,15 @@ int find_validation_mapping(const char* validation, validations_mapping *m) {
 // find a mapping options as string -> option symbol
 int find_mapping(const char* option, mapping* m) {
 	int i=0;
-	mapping found;
-	while (i<mappings_len && strcmp(mappings[i].name, option)) {
-		i++;
+	mapping *found, *current=mappings;
+
+	while (current!=NULL && strcmp(current->name, option)) {
+		printf("comparing to mapping %s\n", current->name);
+		current=current->next;
 	}
-	if (i<mappings_len) {
-		*m = mappings[i];
+	if (current!=NULL) {
+		printf("FOUND!!\n");
+		*m = *current;
 		return 0;
 	}
 	else {
@@ -561,6 +592,7 @@ int find_mapping(const char* option, mapping* m) {
 // return the value of the symbol whose name is passed as string
 int find_code(const char* option) {
 	int i=0;
+	int mappings_len = sizeof(mappings)/sizeof(mappings[0]);
 	while (i<mappings_len && strcmp(mappings[i].name,option)) {
 		i++;
 	}
@@ -1482,13 +1514,15 @@ int main(int argc, char *argv[])
   config_setting_t *test, *name_setting, *type_setting, *output_dir;
   // string value of name_setting
   const char * name_str, *type_str;
+  // initialise mappings
+  mappings=NULL;
 
-
+  void (*init_options)();
   void *handle = dlopen("./libdns_tests.so", RTLD_LAZY);
   run_cares_test=dlsym(handle,"run_cares_test");
+  init_options=dlsym(handle,"init_options");
+  init_options();
 
-
- 
   if( parse_config(argc, argv,&cfg)) {
     //extract tests
     output_dir = config_lookup(&cfg, "output_dir");
