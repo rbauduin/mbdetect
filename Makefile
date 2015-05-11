@@ -18,6 +18,9 @@ test: client
 dns: dns_tests.c
 	gcc -c  -lcares -fpic dns_tests.c
 	gcc -shared -fpic -o libdns_tests.so dns_tests.o -lcares
+curl: curl_tests.c
+	gcc -c  -lcurl -fpic curl_tests.c
+	gcc -shared -fpic -o libcurl_tests.so curl_tests.o -lcares
 clean: 
 	rm -f *.o client server
 set_version:
