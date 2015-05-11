@@ -347,7 +347,7 @@ void clean_dns_output(config_setting_t *test, dns_queries_info_t *query_info){
 
 // run a dns test as defined in the config file.
 // Issues all queries and possible repetitions
-void run_cares_test(config_setting_t *test, config_setting_t *output_dir, const char *suffix) {
+void run_lib_test(config_setting_t *test, config_setting_t *output_dir, const char *suffix) {
 
 	ares_channel channel;
 	int status;
