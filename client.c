@@ -1,6 +1,7 @@
 // exit 1 = no mapping found
 // exit 2 = test library not found
 #include <stdio.h>
+// curl needed for download of tests and upload of logs
 #include <curl/curl.h>
 #include <string.h>
 #include <stdlib.h>
@@ -10,9 +11,6 @@
 #include "utils/slist.h"
 #include <uuid/uuid.h>
 #include <dlfcn.h>
-
-// temporarily
-#include <ares.h>
 
 // ofr upload_log_file
 #include <sys/stat.h>
@@ -244,211 +242,6 @@ int parse_config(int argc, char *argv[], config_t *cfg) {
 	}
 }
 
-int validate_info_value(queries_info_t *head, validations_mapping m, config_setting_t * entry,  char **message) {
-	// message for one iteration in the repetition on the query
-	char iteration_message[VALIDATION_MESSAGE_LENGTH];
-	config_setting_t *value_entry = config_setting_get_member(entry, "value");
-	if (value_entry == NULL) {
-		client_log("value entry not found in validation\n");
-		return -1;
-	}
-	int i=0;
-	while (head!=NULL){
-		switch(value_entry->type)
-		{ 
-			case CONFIG_TYPE_FLOAT:
-				if (head->info[m.code].fval!=value_entry->value.fval) {
-					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,KRED "FAIL" KNON " (float), %s expected %f but is %f\n", m.name, value_entry->value.fval, head->info[m.code].fval);
-					append_to_buffer(message, iteration_message);
-					// do not return, but continue validating subsequent queries
-					//return 0;
-				}
-				else {
-					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,KGRN "SUCCESS" KNON ", query num %d, %s is %f\n", i, m.name, value_entry->value.fval);
-					append_to_buffer(message, iteration_message);
-				}
-				break;
-			case CONFIG_TYPE_INT:
-				if (head->info[m.code].ival!=value_entry->value.ival) {
-					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,KRED "FAIL" KNON " (int), %s expected %d but is %d\n", m.name, value_entry->value.ival, head->info[m.code].ival);
-					append_to_buffer(message, iteration_message);
-					return 0;
-				}
-				else {
-					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,KGRN "SUCCESS" KNON ", query num %d, %s is %d\n", i, m.name, value_entry->value.ival);
-					append_to_buffer(message, iteration_message);
-				}
-				break;
-			case CONFIG_TYPE_INT64:
-				if (head->info[m.code].llval!=value_entry->value.llval) {
-					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,KRED "FAIL" KNON " (int64), %s expected %lld but is %lld\n", m.name, value_entry->value.llval, head->info[m.code].llval);
-					append_to_buffer(message, iteration_message);
-					return 0;
-				}
-				else {
-					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH, KGRN "SUCCESS" KNON ", query num %d, %s is %lld\n", i, m.name, value_entry->value.llval);
-					append_to_buffer(message, iteration_message);
-				}
-				break;
-			case CONFIG_TYPE_STRING:
-				if (!strcmp(head->info[m.code].sval, value_entry->value.sval)) {
-					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH, KRED "FAIL" KNON " (string), %s expected %s but is %s\n", m.name, value_entry->value.sval, head->info[m.code].sval);
-					append_to_buffer(message, iteration_message);
-					return 0;
-				}
-				else {
-					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,KGRN "SUCCESS" KNON ", query num %d, %s is %s\n", i, m.name, value_entry->value.sval);
-					append_to_buffer(message, iteration_message);
-				}
-		}
-		head=head->next;
-		i++;
-	}
-}
-
-
-int validate_info_same_port(queries_info_t *head, validations_mapping m, config_setting_t * setting_entry, char** message) {
-	char iteration_message[VALIDATION_MESSAGE_LENGTH];
-	long long port=-1;
-	while (head!=NULL) {
-		// store port used by first query
-		if (port < 0) {
-			port = head->info[LOCAL_PORT].llval;
-			snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH, KGRN "SUCCESS" KNON " (same port), init to port %llu\n", port);
-			append_to_buffer(message, iteration_message);
-		}
-		// for subsequent queries, check the same port is used
-		else {
-			if (head->info[LOCAL_PORT].llval != port){
-					snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,KRED "FAIL" KNON " (same port): a different port was used!\n" KNON);
-					append_to_buffer(message, iteration_message);
-				return 0; 
-			}
-			snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH, KGRN "SUCCESS" KNON " (same port)\n");
-			append_to_buffer(message, iteration_message);
-		}
-		head=head->next;
-	}
-	return 1;
-
-}
-
-
-int validate_info_different_ports(queries_info_t *head, validations_mapping m, config_setting_t * setting_entry, char** message) {
-	char iteration_message[VALIDATION_MESSAGE_LENGTH];
-	long long port=-1;
-	while (head!=NULL) {
-		if (head->info[LOCAL_PORT].llval == port){
-			snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH,KRED "FAIL" KNON " (different ports): the same port was used for 2 subsequent queries!\n" KNON);
-			append_to_buffer(message, iteration_message);
-			return 0; 
-		}
-		snprintf(iteration_message, VALIDATION_MESSAGE_LENGTH, KGRN "SUCCESS" KNON " (different ports)\n");
-		append_to_buffer(message, iteration_message);
-		head=head->next;
-	}
-	return 1;
-
-}
-
-// validations_mapping type is defined in mbd-utils.h
-// These mappings specify:
-// - the name of the validation
-// - its identification code
-// - the function that will perform the validation
-// The identification code gives the index of the value in query info that
-// will be used for the comparison.
-
-// The informations about each query are stored in an array 
-// of type query_info_field, which is an enum type capable of containing 
-// every type of value returned by curl.
-// The index of the cell in the array in which an info is stored corresponds 
-// to the identification code of the validations_mapping.
-// For example, the "response_code" validation function will look in the 
-// query_info array at index RESPONSE_CODE to get the actual response code
-// result of the curl query.
-//
-// Here's what the code does:
-// - look at validation name, and get the mapping m for which m.name corresponds
-// - extract actual value of the query run at index m.code in the query_info array
-// - look at what value type is present in the validation entry in the config file. 
-//   This must be the same type as the actual value, and will determine which member 
-//   of the union type is extracted
-// - perform comparison of value from config file and the correct member of the union type
-//
-//
-//***********************************************************************
-// To add a validation:
-//***********************************************************************
-// - add an entry validations_mappings
-// - If working on a new field:
-//   - add an entry in validation_fields
-//   - increment QUERY_INFO_FIELD_NUMBER
-// - possible write function. For standard value equality validation, use the
-// standard function validate_info_value. If values extracted from repeated queries need
-// to be validated, look at validate_info_same_port.
- 
-validations_mapping validations_mappings[]={
-	{"response_code", RESPONSE_CODE, validate_info_value}
-	,{"size_download", SIZE_DOWNLOAD, validate_info_value}
-	,{"num_connects", NUM_CONNECTS, validate_info_value}
-	,{"local_port", LOCAL_PORT, validate_info_value}
-	,{"same_port", NONE, validate_info_same_port}
-	,{"different_ports", NONE, validate_info_different_ports}
-};
-
-int validations_mappings_len = sizeof(validations_mappings)/sizeof(validations_mappings[0]);
-
-// check that the validation specified in entry passes.
-// Returns 0 if it fails, 1 if it passes
-// Also sets the message detailing what happened, both in case of success and failure
-// // FIXME: add other comparisons than equality
-int perform_validation(queries_info_t *queries_info,config_setting_t* entry, char **message) {
-	// value to return
-	int res;
-	
-	// actual value we got in this run
-	validation_value_t actual;
-
-	// value entry from the config file. 
-	// value_entry->value contains the union typed value we need to compare to expected value
-	config_setting_t *value_entry = config_setting_get_member(entry, "value");
-
-	// name entry from the config file, and its string value.
-	// Its value is the name of the option passed to curl_easy_getinfo, which we get from the mappings
-	config_setting_t *name_entry = config_setting_get_member(entry, "name");
-	const char * name_str=config_setting_get_string(name_entry);
-	// mapping of the option name to its value
-	validations_mapping m;
-	int mapping_found = find_validation_mapping(name_str,&m);
-	if (mapping_found) {
-		client_log("ERROR, no validation mapping found for %s!\n", name_str);
-		exit(1);
-	}
-
-	res = m.f(queries_info, m, entry, message);
-	return res;
-}
-
-
-
-// find a mapping options as string -> option symbol
-int find_validation_mapping(const char* validation, validations_mapping *m) {
-	int i=0;
-	validations_mapping found;
-	while (i<validations_mappings_len && strcmp(validations_mappings[i].name, validation)) {
-		i++;
-	}
-	if (i<validations_mappings_len) {
-		*m = validations_mappings[i];
-		return 0;
-	}
-	else {
-		client_log("Validation %s not handled by this code\n", validation);
-		return -1;
-	}
-
-}
  
 
 // append option mappings, used by test libraries
@@ -477,25 +270,6 @@ int append_mappings(mapping *additions, int length) {
 	}
 }
 
-//mapping mappings[] =  {
-//	{"CURLOPT_URL", CURLOPT_URL, "str"}
-//// We don not support CURLOPT_HEADER, as it interferes with body sha256 computation
-////	,{"CURLOPT_HEADER", CURLOPT_HEADER, "long"}
-//	,{"CURLOPT_FOLLOWLOCATION", CURLOPT_FOLLOWLOCATION, "long"}
-//	,{"CURLOPT_POST", CURLOPT_POST, "long"}
-//	,{"CURLOPT_POSTFIELDSIZE", CURLOPT_POSTFIELDSIZE, "long"}
-//	,{"CURLOPT_POSTFIELDS",CURLOPT_POSTFIELDS,"str"}
-//	,{"CURLINFO_SIZE_DOWNLOAD",CURLINFO_SIZE_DOWNLOAD,"double"}
-//	,{"CURLINFO_RESPONSE_CODE",CURLINFO_RESPONSE_CODE ,"int"}
-//	,{"CURLINFO_EFFECTIVE_URL",CURLINFO_EFFECTIVE_URL ,"string"}
-//	,{"CURLOPT_CUSTOMREQUEST", CURLOPT_CUSTOMREQUEST, "string"}
-//	,{"CURLOPT_TIMEOUT", CURLOPT_TIMEOUT, "long"}
-//	,{"ARES_SUCCESS", ARES_SUCCESS, "int"}
-//	,{"ARES_ENOTFOUND", ARES_ENOTFOUND, "int"}
-//	,{"ARES_FLAG_USEVC", ARES_FLAG_USEVC, "int"}
-//	
-//}; 
-
 // Extract the output dir from the config file, or sets it by default to /tmp
 void get_base_dir(config_setting_t *output_dir, char **base_dir) {
 	// if not output file, save in /tmp by default
@@ -509,6 +283,7 @@ void get_base_dir(config_setting_t *output_dir, char **base_dir) {
 	}
 }
 
+// get the directory where this run's logs will be stored
 void get_run_log_dir(config_setting_t *output_dir, char **run_path){
 		get_base_dir(output_dir, run_path);
 
@@ -630,11 +405,7 @@ void upload_log(const char *path) {
 
 }
 
-
-
-
-
-
+// Check a test entry has all required attributes
 int validate_test_entry(config_setting_t *test) {
 	const char *name_str;
 	config_setting_t *name_setting = config_setting_get_member(test, "name");
@@ -657,6 +428,7 @@ int validate_test_entry(config_setting_t *test) {
 	}
 }
 
+// Linked list entry mapping test type named to its library functions
 typedef struct test_mapping{
 	const char* name;
 	void (*init_options)();
@@ -667,7 +439,7 @@ typedef struct test_mapping{
 test_mapping *test_mappings=NULL;
 
 	
-
+// Run the test, calling the functions from the related .so
 void run_test(config_setting_t *test, config_setting_t *output_dir, const char* suffix) {
 	    config_setting_t *type_setting = config_setting_get_member(test, "type");
 	    const char *type_str = config_setting_get_string(type_setting);
@@ -733,30 +505,6 @@ void run_test(config_setting_t *test, config_setting_t *output_dir, const char* 
 	    }
 
 	    current->run_test(test, output_dir, suffix);
-	    // if test_mappings contains mapping of this type
-	    //   -> extract mapping
-	    // else
-	    //   -> load dl
-	    //   -> create mapping
-	    //   -> init_options
-	    // run_test
-
-
-
-	    // old version
-	    //if (!strcmp(type_str,"curl")) {
-	    //        run_curl_test(test, output_dir, suffix);
-	    //}
-	    //else if (!strcmp(type_str,"dns")) {
-	    //        void *handle = dlopen("./libdns_tests.so", RTLD_LAZY);
-	    //        run_lib_test=dlsym(handle,"run_cares_test");
-	    //        init_options=dlsym(handle,"init_options");
-	    //        init_options();
-	    //        run_lib_test(test,output_dir, suffix);
-	    //}
-	    //else {
-	    //        client_log(KRED "Unknown test type \"%s\"\n" KNON, type_str);
-	    //}
 
 }
 
