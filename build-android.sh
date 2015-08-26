@@ -128,10 +128,19 @@ echo "#include <sys/types.h>" > usr/include/sys/bitypes.h
 #export CFLAGS="$CFLAGS -I$BASE_DIR/usr/include"
 export CXXFLAGS="$CXXFLAGS -I$BASE_DIR/usr/include"
 
-for dep in CARES LIBCONFIG LIBSODIUM CURL; do
-    build_dep $dep
-done
+#for dep in CARES LIBCONFIG LIBSODIUM CURL; do
+#    build_dep $dep
+#done
 
 export CC=arm-linux-androideabi-gcc
-# -e : environment variables override those defined in Makefile
-make -e android
+
+
+$CC -c -Iinclude -lcares -fpic dns_tests.c
+$CC -shared -Llib -fpic -o libdns_tests.so dns_tests.o
+
+$CC -c -Iinclude -fpic curl_tests.c
+$CC -shared -Llib -fpic -o libcurl_tests.so curl_tests.o
+
+
+## -e : environment variables override those defined in Makefile
+#make -e android
