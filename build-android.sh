@@ -135,12 +135,17 @@ export CXXFLAGS="$CXXFLAGS -I$BASE_DIR/usr/include"
 export CC=arm-linux-androideabi-gcc
 
 
-$CC -c -Iinclude -lcares -fpic dns_tests.c
-$CC -shared -Llib -fpic -o libdns_tests.so dns_tests.o
+$CC -O0 -ggdb -c -Iinclude -fpic dns_tests.c
+$CC -shared -o libdns_tests.so dns_tests.o -Llib  -lcares
 
-$CC -c -Iinclude -fpic curl_tests.c
-$CC -shared -Llib -fpic -o libcurl_tests.so curl_tests.o
+$CC -O0 -ggdb -c -Iinclude -fpic curl_tests.c
+$CC -shared -o libcurl_tests.so curl_tests.o -Llib -lcurl
 
 
 ## -e : environment variables override those defined in Makefile
-#make -e android
+make -e android
+
+# debug notes:
+#~/local/android-ndk-r10d/ndk-stack -sym ./ -dump ts 
+#~/local/android-ndk-r10d/toolchains/x86-4.6/prebuilt/linux-x86_64/bin/i686-linux-android-addr2line -f -e libdns_tests.so 00003628
+ 

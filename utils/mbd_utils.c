@@ -193,5 +193,20 @@ const char * get_test_id(config_setting_t *test){
 	return config_setting_get_string(test_id_setting);
 
 }
+FILE *log_file;
 
+void setup_logging(config_setting_t *output_dir) {
+	char *path;
+	get_run_log_dir(output_dir, &path);
+	mkpath(path);
+	append_to_buffer(&path,"/");
+	append_to_buffer(&path,"client.log");
+	log_file=fopen(path, "w");
+	strncpy(log_path, path, MAX_LOG_PATH_SIZE);
+	free(path);
+}
+
+void close_logging() {
+	fclose(log_file);
+}
 

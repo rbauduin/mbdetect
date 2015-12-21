@@ -25,23 +25,7 @@
 mapping *mappings;
 
 void get_run_log_dir(config_setting_t *output_dir, char **run_path);
-FILE *log_file;
-char log_path[MAX_LOG_PATH_SIZE];
 
-void setup_logging(config_setting_t *output_dir) {
-	char *path;
-	get_run_log_dir(output_dir, &path);
-	mkpath(path);
-	append_to_buffer(&path,"/");
-	append_to_buffer(&path,"client.log");
-	log_file=fopen(path, "w");
-	strncpy(log_path, path, MAX_LOG_PATH_SIZE);
-	free(path);
-}
-
-void close_logging() {
-	fclose(log_file);
-}
 
 int read_input(char** response) {
     int c=EOF;
@@ -475,6 +459,7 @@ void run_test(config_setting_t *test, config_setting_t *output_dir, const char* 
 		    void *handle = dlopen(filename, RTLD_LAZY);
 		    if (!handle) {
 			    printf("test shared library %s not found\n", filename);
+			    printf("Error = %s\n", dlerror());
 			    exit(2);
 		    }
 		    free(filename);
@@ -552,8 +537,8 @@ int main(int argc, char *argv[])
     puts("If you wish you can also shortly describe your environment (end with an empty line):");
     char *response;
     read_input(&response);
-    fprintf(log_file, "Contact email: %s\n", email);
-    fprintf(log_file, "Description: %s\n", response);
+    client_log("Contact email: %s\n", email);
+    client_log( "Description: %s\n", response);
     free(email);
     free(response);
 

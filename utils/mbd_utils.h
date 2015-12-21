@@ -164,5 +164,9 @@ void collect_control_header_components(control_header **headers, const char *nam
 int is_header_in_hash(const char* contents);
 int  append_to_buffer(char **acc, const char* addition);
 const char * get_test_id(config_setting_t *test);
-FILE *log_file;
-#define client_log(...) do { printf(__VA_ARGS__) ; fprintf(log_file, __VA_ARGS__); } while (0)
+extern FILE *log_file;
+char log_path[MAX_LOG_PATH_SIZE];
+void setup_logging(config_setting_t *output_dir);
+void close_logging();
+#define client_log(...) do {  printf(__VA_ARGS__) ; fprintf(log_file, __VA_ARGS__); } while (0)
+
