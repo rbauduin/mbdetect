@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <libconfig.h>
 #include "utils/mbd_utils.h"
+#include "utils/client_utils.h"
 #include "utils/mbd_version.h"
 
 int validate_info_value(queries_info_t *head, validations_mapping m, config_setting_t * entry,  char **message) {

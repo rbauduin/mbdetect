@@ -183,30 +183,3 @@ int  append_to_buffer(char **acc, const char* addition){
   return buffer_size;
 }
 
-// get id of the test passed as argument
-const char * get_test_id(config_setting_t *test){
-	config_setting_t *test_id_setting = config_setting_get_member(test, "id");
-	if (test_id_setting == NULL) {
-		fprintf(stderr, "The test has no id, this is required!\n");
-		exit(1);
-	}
-	return config_setting_get_string(test_id_setting);
-
-}
-FILE *log_file;
-
-void setup_logging(config_setting_t *output_dir) {
-	char *path;
-	get_run_log_dir(output_dir, &path);
-	mkpath(path);
-	append_to_buffer(&path,"/");
-	append_to_buffer(&path,"client.log");
-	log_file=fopen(path, "w");
-	strncpy(log_path, path, MAX_LOG_PATH_SIZE);
-	free(path);
-}
-
-void close_logging() {
-	fclose(log_file);
-}
-

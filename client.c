@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <libconfig.h>
 #include "utils/mbd_utils.h"
+#include "utils/client_utils.h"
 #include "utils/mbd_version.h"
 #include "utils/slist.h"
 #include <uuid/uuid.h>
@@ -24,7 +25,6 @@
 // and avoids changing multiple functions. 
 mapping *mappings;
 
-void get_run_log_dir(config_setting_t *output_dir, char **run_path);
 
 
 int read_input(char** response) {
@@ -265,19 +265,6 @@ void get_base_dir(config_setting_t *output_dir, char **base_dir) {
 	else {
 		strcpy(*base_dir,config_setting_get_string(output_dir));
 	}
-}
-
-// get the directory where this run's logs will be stored
-void get_run_log_dir(config_setting_t *output_dir, char **run_path){
-		get_base_dir(output_dir, run_path);
-
-		char *run_id;
-		get_run_id(&run_id);
-
-		// append run_id as directory
-		strncat(*run_path, "/", 1);
-		strncat(*run_path, run_id, strlen(run_id));
-
 }
 
 // concatenate 2 suffixes to use for log files

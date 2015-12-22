@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <libconfig.h>
 #include "utils/mbd_utils.h"
+#include "utils/client_utils.h"
 #include "utils/mbd_version.h"
 #include "utils/slist.h"
 // for c-ares
